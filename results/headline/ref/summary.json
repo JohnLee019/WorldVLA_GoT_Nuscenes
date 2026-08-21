@@ -1,0 +1,197 @@
+{
+  "mode": "A (prefix)",
+  "seeds": [
+    42
+  ],
+  "n_records": 600,
+  "n_skipped_short_gt": 0,
+  "rank_key": "avgL2@3s",
+  "tail_key": "L2@3s",
+  "got_per_seed": {
+    "42": {
+      "n_evaluated": 600,
+      "n_malformed_plan": 0,
+      "L2@1s": 2.0199,
+      "avgL2@1s": 1.5144,
+      "L2@2s": 4.0449,
+      "avgL2@2s": 2.5251,
+      "L2@3s": 6.3507,
+      "avgL2@3s": 3.6072,
+      "per_step_L2": [
+        1.0089,
+        2.0199,
+        3.0267,
+        4.0449,
+        5.1922,
+        6.3507
+      ],
+      "oracle_selection": {
+        "n": 600,
+        "candidate_spread": 1.8145,
+        "minADE_C": 3.0053,
+        "n_candidates": 7.9517,
+        "oracle_L2@1s": 1.9551,
+        "oracle_L2@2s": 3.7723,
+        "oracle_L2@3s": 4.5896,
+        "oracle_avgL2@1s": 1.4695,
+        "oracle_avgL2@2s": 2.3911,
+        "oracle_avgL2@3s": 3.0053,
+        "selection_gap_L2@1s": 0.0648,
+        "selection_gap_L2@2s": 0.2726,
+        "selection_gap_L2@3s": 1.761,
+        "selection_gap_avgL2@1s": 0.0449,
+        "selection_gap_avgL2@2s": 0.134,
+        "selection_gap_avgL2@3s": 0.6019,
+        "selection_rank": 2.0783,
+        "selection_top1": 0.2383,
+        "worst_candidate": 8.5007
+      },
+      "tail": {
+        "L2@3s_n": 600.0,
+        "L2@3s_mean": 6.3507,
+        "L2@3s_p50": 5.0565,
+        "L2@3s_p90": 14.8199,
+        "L2@3s_p95": 16.2539,
+        "L2@3s_max": 28.3119,
+        "L2@3s_frac_gt_10m": 0.2133
+      },
+      "collision": {
+        "n_evaluated": 600,
+        "coll@1s": 0.00167,
+        "coll@1s_pct": 0.167,
+        "meanColl@1s": 0.00083,
+        "meanColl@1s_pct": 0.083,
+        "cumColl@1s": 0.00167,
+        "cumColl@1s_pct": 0.167,
+        "coll@2s": 0.02167,
+        "coll@2s_pct": 2.167,
+        "meanColl@2s": 0.00875,
+        "meanColl@2s_pct": 0.875,
+        "cumColl@2s": 0.02167,
+        "cumColl@2s_pct": 2.167,
+        "coll@3s": 0.04833,
+        "coll@3s_pct": 4.833,
+        "meanColl@3s": 0.02083,
+        "meanColl@3s_pct": 2.083,
+        "cumColl@3s": 0.05833,
+        "cumColl@3s_pct": 5.833
+      },
+      "vs_baseline_paired": {
+        "n_pairs": 600,
+        "mean_diff": 0.05156,
+        "median_diff": 0.0,
+        "win_rate": 0.38833,
+        "tie_rate": 0.17667,
+        "wilcoxon_p": 0.0259,
+        "mean_diff_ci95": [
+          0.02151,
+          0.08387
+        ]
+      },
+      "cost": {
+        "forward_calls_per_record": 19.99,
+        "sec_per_record": 14.544
+      }
+    }
+  },
+  "baseline_free_run": {
+    "n_evaluated": 600,
+    "n_malformed_generation": 0,
+    "L2@1s": 1.9884,
+    "avgL2@1s": 1.4887,
+    "L2@2s": 4.0228,
+    "avgL2@2s": 2.496,
+    "L2@3s": 6.2439,
+    "avgL2@3s": 3.5557,
+    "per_step_L2": [
+      0.989,
+      1.9884,
+      2.9839,
+      4.0228,
+      5.106,
+      6.2439
+    ],
+    "tail": {
+      "L2@3s_n": 600.0,
+      "L2@3s_mean": 6.2439,
+      "L2@3s_p50": 4.9078,
+      "L2@3s_p90": 14.8139,
+      "L2@3s_p95": 16.2548,
+      "L2@3s_max": 28.3119,
+      "L2@3s_frac_gt_10m": 0.215
+    },
+    "collision": {
+      "n_evaluated": 600,
+      "coll@1s": 0.00167,
+      "coll@1s_pct": 0.167,
+      "meanColl@1s": 0.00083,
+      "meanColl@1s_pct": 0.083,
+      "cumColl@1s": 0.00167,
+      "cumColl@1s_pct": 0.167,
+      "coll@2s": 0.02167,
+      "coll@2s_pct": 2.167,
+      "meanColl@2s": 0.00792,
+      "meanColl@2s_pct": 0.792,
+      "cumColl@2s": 0.02167,
+      "cumColl@2s_pct": 2.167,
+      "coll@3s": 0.05,
+      "coll@3s_pct": 5.0,
+      "meanColl@3s": 0.02056,
+      "meanColl@3s_pct": 2.056,
+      "cumColl@3s": 0.06,
+      "cumColl@3s_pct": 6.0
+    },
+    "cost": {
+      "forward_calls_per_record": 1.0,
+      "sec_per_record": 0.956
+    }
+  },
+  "got_minus_baseline": {
+    "L2@1s": 0.0315,
+    "avgL2@1s": 0.0257,
+    "L2@2s": 0.0221,
+    "avgL2@2s": 0.0291,
+    "L2@3s": 0.1068,
+    "avgL2@3s": 0.0515
+  },
+  "baseline_mean_traj": {
+    "n_evaluated": 600,
+    "L2@1s": 3.1048,
+    "avgL2@1s": 2.3272,
+    "L2@2s": 6.2162,
+    "avgL2@2s": 3.8839,
+    "L2@3s": 9.3211,
+    "avgL2@3s": 5.4369,
+    "collision": {
+      "n_evaluated": 600,
+      "coll@1s": 0.02833,
+      "coll@1s_pct": 2.833,
+      "meanColl@1s": 0.01417,
+      "meanColl@1s_pct": 1.417,
+      "cumColl@1s": 0.02833,
+      "cumColl@1s_pct": 2.833,
+      "coll@2s": 0.085,
+      "coll@2s_pct": 8.5,
+      "meanColl@2s": 0.04458,
+      "meanColl@2s_pct": 4.458,
+      "cumColl@2s": 0.085,
+      "cumColl@2s_pct": 8.5,
+      "coll@3s": 0.10333,
+      "coll@3s_pct": 10.333,
+      "meanColl@3s": 0.06222,
+      "meanColl@3s_pct": 6.222,
+      "cumColl@3s": 0.125,
+      "cumColl@3s_pct": 12.5
+    }
+  },
+  "collision_config": {
+    "parity": "uniad",
+    "ego_length": 4.084,
+    "ego_width": 1.85,
+    "resolution": 0.5,
+    "apply_yaw": false,
+    "ego_x_offset": 0.5,
+    "gt_collision_mask": true,
+    "note": "coll@t = exactly at t (UniAD strategy); meanColl@t = mean of the per-step rates over 0..t (ST-P3/VAD strategy); cumColl@t = any step up to t (ours, no published table uses it). Read GoT against BOTH baselines -- open-loop collision is weak on its own."
+  }
+}

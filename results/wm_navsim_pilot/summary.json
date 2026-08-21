@@ -1,0 +1,47 @@
+{
+  "seed": 42,
+  "n_joined": 8,
+  "n_skipped_short_gt_or_frames": 0,
+  "n_plan_failed": 0,
+  "n_segments": 3,
+  "segment_horizons": {
+    "0": "1.0s",
+    "1": "2.0s",
+    "2": "3.0s"
+  },
+  "note": "READ THE GATES FIRST (\u00a77.5.1). delta_vs_gt_paired['plan'] is only interpretable once wm_gain_over_copy and sensitivity_mirror PASS: a WM that ignores its action input scores d_plan ~ d_gt, i.e. delta ~ 0, which is indistinguishable from 'the plan is as plausible as the ground truth'. Read n_pairs and n_records -- a weak WM drops frames and a tiny pair count is not a result. codebook_l2 is primary; codebook_cosine and pixel_mae are reported beside it because the metric saturates (session 7: it is graded only over ~0-3 m of viewpoint displacement and DECLINES beyond ~4 m).",
+  "arms": [
+    "gt"
+  ],
+  "gt": {
+    "success_rate": 1.0,
+    "n_ok": 24,
+    "n_attempted": 24,
+    "codebook_l2": {
+      "overall": 13.07629,
+      "per_horizon": {
+        "1.0s": 12.85668,
+        "2.0s": 13.0739,
+        "3.0s": 13.2983
+      }
+    },
+    "codebook_cosine": {
+      "overall": 0.49135,
+      "per_horizon": {
+        "1.0s": 0.48085,
+        "2.0s": 0.491,
+        "3.0s": 0.50221
+      }
+    },
+    "pixel_mae": {
+      "overall": 0.06148,
+      "per_horizon": {
+        "1.0s": 0.06322,
+        "2.0s": 0.06136,
+        "3.0s": 0.05987
+      }
+    }
+  },
+  "delta_vs_gt_paired": {},
+  "gates": {}
+}

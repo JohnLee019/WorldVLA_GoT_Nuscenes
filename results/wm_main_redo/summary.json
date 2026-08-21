@@ -1,0 +1,218 @@
+{
+  "arms": [
+    "gt",
+    "copy",
+    "plan"
+  ],
+  "gt": {
+    "success_rate": 1.0,
+    "n_ok": 750,
+    "n_attempted": 750,
+    "codebook_l2": {
+      "overall": 15.09865,
+      "per_horizon": {
+        "1.0s": 15.09968,
+        "2.0s": 15.14411,
+        "3.0s": 15.05214
+      }
+    },
+    "codebook_cosine": {
+      "overall": 0.63171,
+      "per_horizon": {
+        "1.0s": 0.63245,
+        "2.0s": 0.63453,
+        "3.0s": 0.62815
+      }
+    },
+    "pixel_mae": {
+      "overall": 0.10064,
+      "per_horizon": {
+        "1.0s": 0.1007,
+        "2.0s": 0.10101,
+        "3.0s": 0.10021
+      }
+    }
+  },
+  "copy": {
+    "success_rate": 1.0,
+    "n_ok": 750,
+    "n_attempted": 750,
+    "codebook_l2": {
+      "overall": 16.23474,
+      "per_horizon": {
+        "1.0s": 16.26205,
+        "2.0s": 16.2814,
+        "3.0s": 16.16075
+      }
+    },
+    "codebook_cosine": {
+      "overall": 0.70991,
+      "per_horizon": {
+        "1.0s": 0.71124,
+        "2.0s": 0.71284,
+        "3.0s": 0.70563
+      }
+    },
+    "pixel_mae": {
+      "overall": 0.11992,
+      "per_horizon": {
+        "1.0s": 0.12014,
+        "2.0s": 0.12052,
+        "3.0s": 0.1191
+      }
+    }
+  },
+  "plan": {
+    "success_rate": 1.0,
+    "n_ok": 750,
+    "n_attempted": 750,
+    "codebook_l2": {
+      "overall": 15.85466,
+      "per_horizon": {
+        "1.0s": 15.45093,
+        "2.0s": 16.00767,
+        "3.0s": 16.10537
+      }
+    },
+    "codebook_cosine": {
+      "overall": 0.67667,
+      "per_horizon": {
+        "1.0s": 0.65051,
+        "2.0s": 0.68928,
+        "3.0s": 0.69022
+      }
+    },
+    "pixel_mae": {
+      "overall": 0.11306,
+      "per_horizon": {
+        "1.0s": 0.10935,
+        "2.0s": 0.11404,
+        "3.0s": 0.11581
+      }
+    }
+  },
+  "delta_vs_gt_paired": {
+    "copy": {
+      "codebook_l2": {
+        "overall": 1.13609,
+        "n_pairs": 750,
+        "n_records": 250,
+        "ci95_record_clustered": [
+          0.99489,
+          1.2756
+        ],
+        "per_horizon": {
+          "1.0s": 1.16237,
+          "2.0s": 1.13729,
+          "3.0s": 1.10862
+        }
+      },
+      "codebook_cosine": {
+        "overall": 0.0782,
+        "n_pairs": 750,
+        "n_records": 250,
+        "ci95_record_clustered": [
+          0.06926,
+          0.08719
+        ],
+        "per_horizon": {
+          "1.0s": 0.07879,
+          "2.0s": 0.07831,
+          "3.0s": 0.07749
+        }
+      },
+      "pixel_mae": {
+        "overall": 0.01928,
+        "n_pairs": 750,
+        "n_records": 250,
+        "ci95_record_clustered": [
+          0.0172,
+          0.0214
+        ],
+        "per_horizon": {
+          "1.0s": 0.01943,
+          "2.0s": 0.01951,
+          "3.0s": 0.01888
+        }
+      }
+    },
+    "plan": {
+      "codebook_l2": {
+        "overall": 0.75601,
+        "n_pairs": 750,
+        "n_records": 250,
+        "ci95_record_clustered": [
+          0.61855,
+          0.89461
+        ],
+        "per_horizon": {
+          "1.0s": 0.35125,
+          "2.0s": 0.86356,
+          "3.0s": 1.05324
+        }
+      },
+      "codebook_cosine": {
+        "overall": 0.04496,
+        "n_pairs": 750,
+        "n_records": 250,
+        "ci95_record_clustered": [
+          0.03646,
+          0.05371
+        ],
+        "per_horizon": {
+          "1.0s": 0.01806,
+          "2.0s": 0.05475,
+          "3.0s": 0.06207
+        }
+      },
+      "pixel_mae": {
+        "overall": 0.01242,
+        "n_pairs": 750,
+        "n_records": 250,
+        "ci95_record_clustered": [
+          0.01046,
+          0.01438
+        ],
+        "per_horizon": {
+          "1.0s": 0.00864,
+          "2.0s": 0.01303,
+          "3.0s": 0.01559
+        }
+      }
+    }
+  },
+  "gates": {
+    "wm_gain_over_copy": {
+      "overall": 1.13609,
+      "n_pairs": 750,
+      "n_records": 250,
+      "ci95_record_clustered": [
+        0.99489,
+        1.2756
+      ],
+      "per_horizon": {
+        "1.0s": 1.16237,
+        "2.0s": 1.13729,
+        "3.0s": 1.10862
+      },
+      "verdict": "PASS",
+      "reading": "d_copy - d_gt. POSITIVE and CI clear of 0 => the WM beats asserting the scene is unchanged. <=0 => it adds nothing and nothing downstream of it can be believed."
+    },
+    "spearman_delta_vs_L2": {
+      "rho": -0.0091,
+      "n_records": 250,
+      "verdict": "FAIL_uninformative",
+      "reading": "rank correlation between DELTA (d_plan - d_gt) and the plan's L2 error. Near 0 => the WM sees nothing L2 sees. Near 1 => it is just a noisy re-derivation of L2 and adds no independent evidence. The useful outcome is INTERMEDIATE."
+    },
+    "frac_seg_plan_error_gt_4m": {
+      "value": 0.4227,
+      "n_segments": 750,
+      "median_seg_error_m": 3.1887,
+      "reading": "fraction of segments whose plan-vs-GT endpoint displacement lands in the metric's NON-MONOTONIC region, where a worse plan can score a lower distance. Large => report delta split by this threshold."
+    }
+  },
+  "merged_from": [
+    "results/wm_main/per_sample.csv"
+  ],
+  "n_records_merged": 250
+}

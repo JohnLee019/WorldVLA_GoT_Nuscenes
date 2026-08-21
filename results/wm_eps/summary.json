@@ -1,0 +1,355 @@
+{
+  "seed": 42,
+  "n_joined": 40,
+  "n_skipped_short_gt_or_frames": 0,
+  "n_plan_failed": 0,
+  "n_segments": 3,
+  "segment_horizons": {
+    "0": "1.0s",
+    "1": "2.0s",
+    "2": "3.0s"
+  },
+  "note": "READ THE GATES FIRST (\u00a77.5.1). delta_vs_gt_paired['plan'] is only interpretable once wm_gain_over_copy and sensitivity_mirror PASS: a WM that ignores its action input scores d_plan ~ d_gt, i.e. delta ~ 0, which is indistinguishable from 'the plan is as plausible as the ground truth'. Read n_pairs and n_records -- a weak WM drops frames and a tiny pair count is not a result. codebook_l2 is primary; codebook_cosine and pixel_mae are reported beside it because the metric saturates (session 7: it is graded only over ~0-3 m of viewpoint displacement and DECLINES beyond ~4 m).",
+  "arms": [
+    "gt",
+    "eps0.5",
+    "eps1",
+    "eps2",
+    "eps3"
+  ],
+  "gt": {
+    "success_rate": 1.0,
+    "n_ok": 120,
+    "n_attempted": 120,
+    "codebook_l2": {
+      "overall": 14.69734,
+      "per_horizon": {
+        "1.0s": 14.92032,
+        "2.0s": 14.71075,
+        "3.0s": 14.46095
+      }
+    },
+    "codebook_cosine": {
+      "overall": 0.591,
+      "per_horizon": {
+        "1.0s": 0.60446,
+        "2.0s": 0.59359,
+        "3.0s": 0.57495
+      }
+    },
+    "pixel_mae": {
+      "overall": 0.07946,
+      "per_horizon": {
+        "1.0s": 0.07981,
+        "2.0s": 0.08048,
+        "3.0s": 0.07808
+      }
+    }
+  },
+  "eps0.5": {
+    "success_rate": 1.0,
+    "n_ok": 120,
+    "n_attempted": 120,
+    "codebook_l2": {
+      "overall": 16.2654,
+      "per_horizon": {
+        "1.0s": 16.01303,
+        "2.0s": 16.41435,
+        "3.0s": 16.36883
+      }
+    },
+    "codebook_cosine": {
+      "overall": 0.69081,
+      "per_horizon": {
+        "1.0s": 0.67609,
+        "2.0s": 0.70075,
+        "3.0s": 0.69557
+      }
+    },
+    "pixel_mae": {
+      "overall": 0.09429,
+      "per_horizon": {
+        "1.0s": 0.09092,
+        "2.0s": 0.09513,
+        "3.0s": 0.09681
+      }
+    }
+  },
+  "eps1": {
+    "success_rate": 1.0,
+    "n_ok": 120,
+    "n_attempted": 120,
+    "codebook_l2": {
+      "overall": 15.80154,
+      "per_horizon": {
+        "1.0s": 15.39142,
+        "2.0s": 15.87814,
+        "3.0s": 16.13507
+      }
+    },
+    "codebook_cosine": {
+      "overall": 0.65809,
+      "per_horizon": {
+        "1.0s": 0.63202,
+        "2.0s": 0.66435,
+        "3.0s": 0.67789
+      }
+    },
+    "pixel_mae": {
+      "overall": 0.09174,
+      "per_horizon": {
+        "1.0s": 0.08607,
+        "2.0s": 0.09208,
+        "3.0s": 0.09706
+      }
+    }
+  },
+  "eps2": {
+    "success_rate": 1.0,
+    "n_ok": 120,
+    "n_attempted": 120,
+    "codebook_l2": {
+      "overall": 14.92843,
+      "per_horizon": {
+        "1.0s": 15.07602,
+        "2.0s": 15.10613,
+        "3.0s": 14.60315
+      }
+    },
+    "codebook_cosine": {
+      "overall": 0.60374,
+      "per_horizon": {
+        "1.0s": 0.60914,
+        "2.0s": 0.61692,
+        "3.0s": 0.58515
+      }
+    },
+    "pixel_mae": {
+      "overall": 0.0818,
+      "per_horizon": {
+        "1.0s": 0.08346,
+        "2.0s": 0.08257,
+        "3.0s": 0.07936
+      }
+    }
+  },
+  "eps3": {
+    "success_rate": 1.0,
+    "n_ok": 120,
+    "n_attempted": 120,
+    "codebook_l2": {
+      "overall": 15.03082,
+      "per_horizon": {
+        "1.0s": 15.08176,
+        "2.0s": 15.24991,
+        "3.0s": 14.76078
+      }
+    },
+    "codebook_cosine": {
+      "overall": 0.60971,
+      "per_horizon": {
+        "1.0s": 0.60973,
+        "2.0s": 0.62587,
+        "3.0s": 0.59354
+      }
+    },
+    "pixel_mae": {
+      "overall": 0.08251,
+      "per_horizon": {
+        "1.0s": 0.08265,
+        "2.0s": 0.0837,
+        "3.0s": 0.08117
+      }
+    }
+  },
+  "delta_vs_gt_paired": {
+    "eps0.5": {
+      "codebook_l2": {
+        "overall": 1.56807,
+        "n_pairs": 120,
+        "n_records": 40,
+        "ci95_record_clustered": [
+          1.10754,
+          2.03481
+        ],
+        "per_horizon": {
+          "1.0s": 1.09272,
+          "2.0s": 1.7036,
+          "3.0s": 1.90789
+        }
+      },
+      "codebook_cosine": {
+        "overall": 0.09981,
+        "n_pairs": 120,
+        "n_records": 40,
+        "ci95_record_clustered": [
+          0.07022,
+          0.13004
+        ],
+        "per_horizon": {
+          "1.0s": 0.07163,
+          "2.0s": 0.10717,
+          "3.0s": 0.12063
+        }
+      },
+      "pixel_mae": {
+        "overall": 0.01483,
+        "n_pairs": 120,
+        "n_records": 40,
+        "ci95_record_clustered": [
+          0.01078,
+          0.01876
+        ],
+        "per_horizon": {
+          "1.0s": 0.01111,
+          "2.0s": 0.01465,
+          "3.0s": 0.01873
+        }
+      }
+    },
+    "eps1": {
+      "codebook_l2": {
+        "overall": 1.10421,
+        "n_pairs": 120,
+        "n_records": 40,
+        "ci95_record_clustered": [
+          0.62397,
+          1.60824
+        ],
+        "per_horizon": {
+          "1.0s": 0.4711,
+          "2.0s": 1.16739,
+          "3.0s": 1.67413
+        }
+      },
+      "codebook_cosine": {
+        "overall": 0.06709,
+        "n_pairs": 120,
+        "n_records": 40,
+        "ci95_record_clustered": [
+          0.0358,
+          0.09977
+        ],
+        "per_horizon": {
+          "1.0s": 0.02757,
+          "2.0s": 0.07077,
+          "3.0s": 0.10295
+        }
+      },
+      "pixel_mae": {
+        "overall": 0.01228,
+        "n_pairs": 120,
+        "n_records": 40,
+        "ci95_record_clustered": [
+          0.00775,
+          0.01687
+        ],
+        "per_horizon": {
+          "1.0s": 0.00626,
+          "2.0s": 0.0116,
+          "3.0s": 0.01898
+        }
+      }
+    },
+    "eps2": {
+      "codebook_l2": {
+        "overall": 0.2311,
+        "n_pairs": 120,
+        "n_records": 40,
+        "ci95_record_clustered": [
+          -0.05576,
+          0.52282
+        ],
+        "per_horizon": {
+          "1.0s": 0.1557,
+          "2.0s": 0.39538,
+          "3.0s": 0.14221
+        }
+      },
+      "codebook_cosine": {
+        "overall": 0.01274,
+        "n_pairs": 120,
+        "n_records": 40,
+        "ci95_record_clustered": [
+          -0.00686,
+          0.03391
+        ],
+        "per_horizon": {
+          "1.0s": 0.00468,
+          "2.0s": 0.02333,
+          "3.0s": 0.01021
+        }
+      },
+      "pixel_mae": {
+        "overall": 0.00234,
+        "n_pairs": 120,
+        "n_records": 40,
+        "ci95_record_clustered": [
+          0.0,
+          0.00462
+        ],
+        "per_horizon": {
+          "1.0s": 0.00364,
+          "2.0s": 0.00209,
+          "3.0s": 0.00128
+        }
+      }
+    },
+    "eps3": {
+      "codebook_l2": {
+        "overall": 0.33348,
+        "n_pairs": 120,
+        "n_records": 40,
+        "ci95_record_clustered": [
+          0.0497,
+          0.62745
+        ],
+        "per_horizon": {
+          "1.0s": 0.16144,
+          "2.0s": 0.53916,
+          "3.0s": 0.29984
+        }
+      },
+      "codebook_cosine": {
+        "overall": 0.01872,
+        "n_pairs": 120,
+        "n_records": 40,
+        "ci95_record_clustered": [
+          -6e-05,
+          0.03879
+        ],
+        "per_horizon": {
+          "1.0s": 0.00527,
+          "2.0s": 0.03228,
+          "3.0s": 0.01859
+        }
+      },
+      "pixel_mae": {
+        "overall": 0.00305,
+        "n_pairs": 120,
+        "n_records": 40,
+        "ci95_record_clustered": [
+          0.00077,
+          0.00535
+        ],
+        "per_horizon": {
+          "1.0s": 0.00283,
+          "2.0s": 0.00322,
+          "3.0s": 0.00309
+        }
+      }
+    }
+  },
+  "gates": {
+    "eps_curve": {
+      "curve": {
+        "eps0.5": 1.56807,
+        "eps1": 1.10421,
+        "eps2": 0.2311,
+        "eps3": 0.33348
+      },
+      "monotonic": false,
+      "reading": "delta for a GT action displaced laterally by eps metres -- the conversion from a delta value to 'effective metres of error'. Must increase with eps. \u2605Only valid for eps <= ~3 m: the measured displacement-resolution curve peaks at 3-4 m and declines after."
+    }
+  }
+}

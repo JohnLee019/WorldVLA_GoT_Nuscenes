@@ -1,0 +1,229 @@
+{
+  "seed": 42,
+  "n_joined": 30,
+  "n_skipped_short_gt_or_frames": 0,
+  "n_plan_failed": 0,
+  "n_segments": 3,
+  "segment_horizons": {
+    "0": "1.0s",
+    "1": "2.0s",
+    "2": "3.0s"
+  },
+  "note": "READ THE GATES FIRST (\u00a77.5.1). delta_vs_gt_paired['plan'] is only interpretable once wm_gain_over_copy and sensitivity_mirror PASS: a WM that ignores its action input scores d_plan ~ d_gt, i.e. delta ~ 0, which is indistinguishable from 'the plan is as plausible as the ground truth'. Read n_pairs and n_records -- a weak WM drops frames and a tiny pair count is not a result. codebook_l2 is primary; codebook_cosine and pixel_mae are reported beside it because the metric saturates (session 7: it is graded only over ~0-3 m of viewpoint displacement and DECLINES beyond ~4 m).",
+  "arms": [
+    "gt",
+    "mirror",
+    "copy"
+  ],
+  "gt": {
+    "success_rate": 1.0,
+    "n_ok": 90,
+    "n_attempted": 90,
+    "codebook_l2": {
+      "overall": 14.69326,
+      "per_horizon": {
+        "1.0s": 14.64634,
+        "2.0s": 14.79997,
+        "3.0s": 14.63346
+      }
+    },
+    "codebook_cosine": {
+      "overall": 0.58907,
+      "per_horizon": {
+        "1.0s": 0.58417,
+        "2.0s": 0.59748,
+        "3.0s": 0.58555
+      }
+    },
+    "pixel_mae": {
+      "overall": 0.07974,
+      "per_horizon": {
+        "1.0s": 0.07957,
+        "2.0s": 0.08172,
+        "3.0s": 0.07793
+      }
+    }
+  },
+  "mirror": {
+    "success_rate": 1.0,
+    "n_ok": 90,
+    "n_attempted": 90,
+    "codebook_l2": {
+      "overall": 15.44114,
+      "per_horizon": {
+        "1.0s": 15.00714,
+        "2.0s": 15.66583,
+        "3.0s": 15.65045
+      }
+    },
+    "codebook_cosine": {
+      "overall": 0.6329,
+      "per_horizon": {
+        "1.0s": 0.60324,
+        "2.0s": 0.6493,
+        "3.0s": 0.64615
+      }
+    },
+    "pixel_mae": {
+      "overall": 0.09053,
+      "per_horizon": {
+        "1.0s": 0.0878,
+        "2.0s": 0.09278,
+        "3.0s": 0.09102
+      }
+    }
+  },
+  "copy": {
+    "success_rate": 1.0,
+    "n_ok": 90,
+    "n_attempted": 90,
+    "codebook_l2": {
+      "overall": 15.80741,
+      "per_horizon": {
+        "1.0s": 15.64043,
+        "2.0s": 15.9726,
+        "3.0s": 15.8092
+      }
+    },
+    "codebook_cosine": {
+      "overall": 0.66363,
+      "per_horizon": {
+        "1.0s": 0.65073,
+        "2.0s": 0.67648,
+        "3.0s": 0.66367
+      }
+    },
+    "pixel_mae": {
+      "overall": 0.09741,
+      "per_horizon": {
+        "1.0s": 0.09817,
+        "2.0s": 0.09876,
+        "3.0s": 0.09529
+      }
+    }
+  },
+  "delta_vs_gt_paired": {
+    "mirror": {
+      "codebook_l2": {
+        "overall": 0.74788,
+        "n_pairs": 90,
+        "n_records": 30,
+        "ci95_record_clustered": [
+          0.43107,
+          1.08771
+        ],
+        "per_horizon": {
+          "1.0s": 0.36079,
+          "2.0s": 0.86586,
+          "3.0s": 1.01699
+        }
+      },
+      "codebook_cosine": {
+        "overall": 0.04383,
+        "n_pairs": 90,
+        "n_records": 30,
+        "ci95_record_clustered": [
+          0.02313,
+          0.06759
+        ],
+        "per_horizon": {
+          "1.0s": 0.01907,
+          "2.0s": 0.05181,
+          "3.0s": 0.0606
+        }
+      },
+      "pixel_mae": {
+        "overall": 0.01079,
+        "n_pairs": 90,
+        "n_records": 30,
+        "ci95_record_clustered": [
+          0.00696,
+          0.01515
+        ],
+        "per_horizon": {
+          "1.0s": 0.00823,
+          "2.0s": 0.01106,
+          "3.0s": 0.01308
+        }
+      }
+    },
+    "copy": {
+      "codebook_l2": {
+        "overall": 1.11415,
+        "n_pairs": 90,
+        "n_records": 30,
+        "ci95_record_clustered": [
+          0.71987,
+          1.49891
+        ],
+        "per_horizon": {
+          "1.0s": 0.99409,
+          "2.0s": 1.17263,
+          "3.0s": 1.17574
+        }
+      },
+      "codebook_cosine": {
+        "overall": 0.07456,
+        "n_pairs": 90,
+        "n_records": 30,
+        "ci95_record_clustered": [
+          0.0458,
+          0.10305
+        ],
+        "per_horizon": {
+          "1.0s": 0.06656,
+          "2.0s": 0.079,
+          "3.0s": 0.07812
+        }
+      },
+      "pixel_mae": {
+        "overall": 0.01767,
+        "n_pairs": 90,
+        "n_records": 30,
+        "ci95_record_clustered": [
+          0.01242,
+          0.02333
+        ],
+        "per_horizon": {
+          "1.0s": 0.0186,
+          "2.0s": 0.01704,
+          "3.0s": 0.01736
+        }
+      }
+    }
+  },
+  "gates": {
+    "wm_gain_over_copy": {
+      "overall": 1.11415,
+      "n_pairs": 90,
+      "n_records": 30,
+      "ci95_record_clustered": [
+        0.71987,
+        1.49891
+      ],
+      "per_horizon": {
+        "1.0s": 0.99409,
+        "2.0s": 1.17263,
+        "3.0s": 1.17574
+      },
+      "verdict": "PASS",
+      "reading": "d_copy - d_gt. POSITIVE and CI clear of 0 => the WM beats asserting the scene is unchanged. <=0 => it adds nothing and nothing downstream of it can be believed."
+    },
+    "sensitivity_mirror": {
+      "overall": 0.74788,
+      "n_pairs": 90,
+      "n_records": 30,
+      "ci95_record_clustered": [
+        0.43107,
+        1.08771
+      ],
+      "per_horizon": {
+        "1.0s": 0.36079,
+        "2.0s": 0.86586,
+        "3.0s": 1.01699
+      },
+      "verdict": "PASS",
+      "reading": "d_mirror - d_gt with the GT action's lateral component negated. POSITIVE and CI clear of 0 => the WM actually responds to the ACTION. ~0 => it renders the same future whatever it is told, so delta ~ 0 would mean 'measures nothing', not 'the plan is good'."
+    }
+  }
+}

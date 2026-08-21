@@ -1,0 +1,17 @@
+# 이 리포의 .sh/.py는 server03(Linux)에서 실행된다.
+# Windows 체크아웃에서 CRLF로 바뀌면 그 파일을 서버로 동기화했을 때
+# bash가 `\r`을 명령의 일부로 읽어 `$'\r': command not found`로 죽는다.
+# → 저장은 물론 체크아웃도 LF로 못박는다.
+* text=auto eol=lf
+
+# 바이너리는 손대지 않는다(줄바꿈 변환 시 파일이 깨진다)
+*.png binary
+*.gif binary
+*.jpg binary
+*.jpeg binary
+*.pt  binary
+*.pth binary
+
+# 증거 CSV는 바이트 그대로 보존한다 — python csv.writer가 CRLF로 쓰므로
+# eol=lf가 걸리면 서버 원본과 바이트가 달라진다(해시 대조가 깨진다).
+*.csv -text

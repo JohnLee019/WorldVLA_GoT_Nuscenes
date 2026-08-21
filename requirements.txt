@@ -1,0 +1,43 @@
+# GoT-VLA 핵심 의존성
+# Python 3.10 권장
+
+# PyTorch (CUDA 12.1 기준 — 서버 드라이버에 맞춰 조정)
+torch==2.2.0
+torchvision==0.17.0
+torchaudio==2.2.0
+
+# 모델/학습
+transformers==4.43.0
+accelerate==0.33.0
+tokenizers==0.19.1
+safetensors==0.4.2
+peft==0.4.0
+bitsandbytes==0.43.0
+deepspeed==0.13.1
+fairscale==0.4.13
+
+# 이미지/시각화
+Pillow==10.2.0
+lpips==0.1.4
+opencv-python==4.8.0.76
+
+# 시뮬레이터
+robosuite==1.4.0
+mujoco==3.3.5
+gym==0.26.2
+
+# 데이터/유틸
+numpy==1.26.4
+scipy==1.11.4
+h5py==3.14.0
+einops==0.6.1
+timm==1.0.3
+sentencepiece==0.1.99
+defusedxml==0.7.1
+
+# 학습 모니터링
+tensorboard==2.17.1
+tqdm==4.66.5
+
+# HuggingFace Hub (체크포인트 다운로드)
+huggingface-hub==0.23.4
