@@ -12,13 +12,57 @@ We put a **Graph-of-Thought-style deliberation layer** (generate candidates → 
 
 | | `avgL2@3s` |
 |---|---|
-| **greedy** (no deliberation) | **3.5557** |
-| **GoT** (deliberation) | **3.6072** |
+| **greedy** (no deliberation) | **3.5557** (deterministic) |
+| **GoT** (deliberation) | **3.5954 ± 0.0105** (3-seed mean; per seed 3.6072 / 3.5874 / 3.5915) |
 | difference | **+0.0397 ± 0.0105** · p_sc **0.0003** · ci_sc [+0.022, +0.083] · **positive on 3/3 seeds** |
 | oracle `minADE_C` (best candidate in pool) | **2.9770 ± 0.0264** |
 | mean-trajectory trivial baseline | 5.4369 |
 
 ★ **There is 16.3 % of headroom in the candidate pool, and deliberation not only fails to collect it — it does worse than greedy.** The model does use the image (3.5557 vs mean-trajectory 5.4369, −34.6 %).
+
+### 1a. Did fine-tuning teach the model anything? — the pre-training backbone, measured
+
+Before asking whether deliberation helps, establish that there is a driving policy to deliberate over.
+All rows: 600 records / 150 scenes, deterministic centre crop, seed 42.
+
+| arm | valid output | ADE | FDE | L2 Avg. | Coll Avg. | forward | s/record | rel. cost |
+|---|---|---|---|---|---|---|---|---|
+| raw backbone · free generation | **0 / 600** | n/a | n/a | n/a | n/a | 1 | 0.67 † | — |
+| raw backbone · grammar-forced | 600 / 600 | **21.3287** | 25.8088 | 22.1479 | 4.834 | 1 | 1.17 † | — |
+| *(control)* fine-tuned · grammar-forced | 600 / 600 | **3.5557** | 6.2439 | 4.0850 | 2.445 | 1 | 1.36 † | — |
+| fine-tuned · greedy | 600 / 600 | **3.5557** | 6.2439 | 4.0850 | 2.445 | 1 | 0.97 | **1×** |
+| fine-tuned · GoT | 600 / 600 | 3.5954 ± 0.0105 | 6.3101 ± 0.0425 | 4.1251 ± 0.0140 | 2.371 ± 0.032 | 20 | 14.65 ± 0.26 | **15×** |
+| *(reference)* stop prediction | — | 9.2230 | 15.8187 | 10.5425 | — | 0 | 0 | — |
+| *(reference)* mean-trajectory prior | — | 5.4369 | 9.3211 | 6.2140 | 7.222 | 0 | 0 | — |
+
+† grammar-forced arms decode under a different rule, so their wall-clock is not comparable with the
+free-run rows; `rel. cost` is only defined against the fine-tuned greedy baseline. `s/record` also drifts
+run to run with GPU contention — the *same* checkpoint and the *same* 3.5557 appear at 0.91, 0.97 and 1.36
+across three runs. **Only the 15× GoT figure is a within-run comparison**, and it is the only cost claim
+this table supports.
+
+★ **The backbone emits no trajectory at all.** `<reserved10000>`-family action tokens are *empty slots* in
+the Chameleon vocabulary — they never occur in pre-training — so the parser finds zero action groups.
+This measures the **output protocol**, not driving ability, which is why the second row exists.
+
+★★ **Forced to emit well-formed waypoints, the backbone is worse than predicting a full stop** — ADE 21.33
+against 9.22, a factor of 2.3. Δ vs fine-tuned **+17.7731**, ci_sc [+17.16, +18.35], p_sc < 0.0001, and the
+backbone wins on **0 / 600** records. There is no driving prior in the pre-trained weights to recover.
+
+★ **The control row licenses that reading**: applying the same grammar mask to the *fine-tuned* model
+reproduces ADE 3.5557 and its per-step curve exactly, so **masking costs nothing in accuracy** and 21.33 is
+the backbone's own number, not an artefact of the mask. Read the two grammar-forced rows against each other
+— that pair is the clean comparison.
+⚠️ Grammar-forced decoding is a **separate arm** — never put it in the same column as a free-run number
+without its control.
+
+★ **The per-step curve separates "weak prior" from "no prior"**: the backbone goes 18.62 → 22.02 → 25.81
+(×1.39) — already 18.6 m wrong at 1 s and nearly flat — while the fine-tuned model accumulates normally at
+1.99 → 4.02 → 6.24 (×3.14). Picking bins at random over the normalised range has an expectation of ≈ 27.7 m,
+which puts the GT roughly 18–20 m away: exactly the 18.62 observed.
+
+→ **Read the two tables together**: fine-tuning moves ADE 21.33 → 3.5557, and deliberation on top of that
+moves it 3.5557 → 3.5954 in the wrong direction, for 15× the cost.
 
 ## 2. Why it cannot choose — every selection rule we could build
 
@@ -105,6 +149,45 @@ All three are the same size as a synthetic random control. The fallback sweep is
 
 **Eight candidates cannot select an answer that lies 3.7× their own width outside them.** Apply the same information **to the trajectory** instead and you get −2.1138 (3.5557 → **1.44**) — so this is **a generator problem, not a selector problem**.
 
+★★★ **A training-free constant-velocity extrapolation beats this model** (`analysis/eval_constant_velocity.py`, 450 records / 150 scenes, **CPU only**). Read v0 as the previous adjacent keyframe's longitudinal displacement and hold it straight for 3 s. No model, no image, no learning.
+
+| same 450 records | ADE (`avgL2@3s`) | FDE (`L2@3s`) | avg. Col. (UniAD) | avg. Col. (ST-P3) |
+|---|---|---|---|---|
+| VLA (finetuned) | 3.5272 | — | 2.519 % | 0.926 % |
+| **constant velocity** | **1.2962** | **2.7316** | **0.519 %** | **0.111 %** |
+
+Δ ADE **−2.2310**, ci_sc [−2.6352, −1.8508], p_sc <0.0001, constant-velocity win rate **76.2 %**. **It wins on collision as well as on L2.**
+
+⚠️ **This is a statement about the benchmark, not a defect in the method.** It is BEV-Planner's critique of nuScenes open-loop reproduced independently inside our pipeline, and it measures **the same thing as the 1.44 above, from the other side**. This project **does not consume ego status by design**, which is exactly what makes that shortcut unavailable to it — the absolute L2 is the price.
+
+★ **Why 450/600**: the other 150 records **open their scene**, so no predecessor exists in any source (attainable coverage 100 %). Both arms above are scored on the **same 450**, and the model's collision rate is 2.445 % on all 600 vs 2.519 % on the 450 — so that subset is not skewed.
+
+★★ **The contrast in the other direction — the backbone holds no driving prior.** Checked in two stages.
+
+**(1) Free generation.** Running the finetuning's own starting point (`../ckpts/Lumina-mGPT-7B-768`) on the
+same 600 records gives `n_malformed_generation` **600 / 600**, `n_evaluated` **0**. The `<reserved10000>`
+family are *empty vocabulary slots* that never appear in pretraining, so the parser finds no action group.
+That number measures whether the model knows the OUTPUT PROTOCOL, not whether it can drive.
+
+**(2) Grammar forced (`--constrained`).** Mask the logits to the valid tokens at every step and the backbone
+also emits 600/600 well-formed trajectories. The result is **ADE 21.3287**.
+
+| same 600 records | ADE | verdict |
+|---|---|---|
+| raw backbone (grammar forced) | **21.3287** | **2.3x worse** than predicting no motion |
+| stay-still (all-zero waypoints) | 9.2230 | |
+| mean-trajectory prior | 5.4369 | |
+| VLA (finetuned) | **3.5557** | |
+
+Delta ADE **+17.7731**, ci_sc [+17.1630, +18.3462], p_sc <0.0001, and the backbone wins **0 of 600** records.
+
+★ **The control licenses that reading**: forcing the same grammar on the FINETUNED model returns ADE
+**3.5557, identical to free generation to the last decimal** (`per_step_L2` matches too). Masking costs
+nothing in accuracy, so the backbone's 21.33 is the model's own value, not an artefact of the decoding rule.
+
+→ Read the two contrasts together: **finetuning is what makes the task possible at all (0 % -> 100 %), and the
+absolute accuracy it buys still loses to a constant-velocity extrapolation that only knows the ego speed.**
+
 ## 6. World Model (offline evaluator)
 
 Trajectory → generate the future image → compare with the real frame. 250 records.
@@ -176,6 +259,17 @@ python analysis/analyze_got_csv.py results/headline/ref/per_sample.csv \
 # 3) ★always compare arms paired (the CI narrows from 0.27 to 0.08)
 python analysis/compare_arms.py --ref results/headline/ref/per_sample.csv \
   results/headline/ref/per_sample.csv results/headline/<arm>/per_sample.csv
+# 4) training-free constant-velocity baseline (CPU only, seconds). Runs while the GPUs are busy
+#    ⚠️ --records must be the FULL val json (consecutive keyframes). The eval set is ~5.5 s apart,
+#       so it contains no predecessors of its own
+python analysis/eval_constant_velocity.py \
+  --records ./data/nuscenes_records/nuscenes_v1.0-trainval_val.json \
+  --eval_records ./data/nuscenes_records/nuscenes_val_scenespread.json \
+  --output_dir ./results/const_velocity \
+  --ref ./results/base_ckpt/incumbent_cont2_ep1 \
+  --collision_json ./data/nuscenes_records/nuscenes_collision_v1.0-trainval_val.json \
+  --ref_collision_csv ./results/headline/ref/per_sample.csv \
+  --dt_lo 0.3 --dt_hi 0.8
 ```
 
 ★ **Report only `p_sc` and `ci_sc`.** `p_rec` treats records as independent and is inflated; it is printed only to show the difference between the two.
@@ -204,7 +298,7 @@ torchrun --nproc_per_node=3 train_nuscenes.py \
 |---|---|
 | `got_drive/` | ★**the driving GoT itself** — pipeline, scoring (kinematic/command/likelihood), fusion, deterministic crop |
 | `train_nuscenes*.py` · `eval_*.py` | training / evaluation |
-| `analysis/` | ★**19 controlled-experiment tools** — all GPU-free, offline analysis that reads the csv |
+| `analysis/` | ★**20 controlled-experiment tools** — all GPU-free, offline analysis that reads the csv |
 | `scripts/` | 3-GPU parallel runners (`run_*.sh`), eval-set builder, environment checks |
 | `results/` | the raw material behind the paper's tables and the WM (`per_sample.csv`, `summary.json`) |
 | `data/preprocess_*.py` | nuScenes / NAVSIM record builders |
