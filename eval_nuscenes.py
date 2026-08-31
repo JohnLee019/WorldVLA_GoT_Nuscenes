@@ -45,7 +45,7 @@ from pathlib import Path
 import numpy as np
 import torch
 from PIL import Image
-from transformers import GenerationConfig
+from transformers import GenerationConfig, LogitsProcessor, LogitsProcessorList
 
 from model import ChameleonXLLMXForConditionalGeneration_ck_action_head
 from data.item_processor import FlexARItemProcessor_Action_NuScenes
@@ -104,11 +104,24 @@ def get_args():
     p.add_argument("--load_in_4bit", action="store_true", default=False)
     p.add_argument("--limit", type=int, default=0, help="evaluate only the first N records (0 = all)")
     p.add_argument("--seed", type=int, default=42, help="RNG seed (reproducible sampling)")
+    p.add_argument("--constrained", action="store_true", default=False,
+                   help="mask the logits to the [start, dims..., end] action grammar so ANY "
+                        "checkpoint emits a well-formed trajectory. Use it to score a model "
+                        "that was never trained on this token grammar (a raw backbone), where "
+                        "free generation returns 100%% malformed. Discrete decoder only. "
+                        "★A constrained run is a DIFFERENT ARM -- compare it to the model-free "
+                        "baselines, not to the free-generation numbers.")
     p.add_argument("--legacy_random_crop", action="store_true", default=False,
                    help="reproduce pre-fix numbers: let process_image() random-crop the frame "
                         "on every forward call (training augmentation leaking into eval). "
                         "Default is a deterministic centre crop -- see got_drive/eval_crop.py. "
                         "Never mix the two inside one table.")
+    p.add_argument("--with_state", action="store_true",
+                   help="feed causal ego status (<|state|>) alongside the image. MUST match "
+                        "how the checkpoint was trained -- a state-trained checkpoint "
+                        "evaluated without it (or vice versa) is off-distribution and the "
+                        "L2 is meaningless. Records need a `state` field "
+                        "(data/preprocess_nuscenes.py) and the norm json needs `state_min`.")
     p.add_argument("--train_records_json", default=None,
                    help="records to compute the mean-trajectory baseline from (ideally the TRAIN "
                         "split). If unset, the eval split is used (slightly optimistic).")
@@ -147,19 +160,92 @@ def unnorm_waypoints(norm_wp, wp_min, wp_max):
     return (norm_wp + 1) / 2 * (wp_max - wp_min + 1e-8) + wp_min
 
 
+def build_planning_conv(prompt, image, state):
+    """The one place the observation conversation is assembled.
+
+    Training builds this in data/dataset_nuscenes.py; if the two ever disagree on
+    placeholder ORDER the same record tokenizes differently at train and eval
+    time and the model is evaluated off-distribution without anything failing.
+    Keep the two in sync -- image first, then state, both in the human turn.
+    """
+    human = prompt + "<|image|>"
+    conv = {"conversations": None, "image": [image], "action": []}
+    if state is not None:
+        human += "<|state|>"
+        conv["state"] = [list(map(float, state))]
+    conv["conversations"] = [{"from": "human", "value": human}]
+    return conv
+
+
+class WaypointGrammar(LogitsProcessor):
+    """Force `[start, x_bin, y_bin, end] x time_horizon` onto the generated stream.
+
+    WHY THIS EXISTS. A checkpoint that was never trained on this grammar emits
+    none of these tokens -- `<reserved10000>`/`<reserved15000>` and the 256 bin
+    slots after them are RESERVED vocabulary entries with no pretrained meaning,
+    so a raw backbone has no reason to produce them. `generate_dis_ma` then parses
+    zero action groups and every record comes back malformed (measured: 600/600 on
+    ../ckpts/Lumina-mGPT-7B-768). That number says the model does not know the
+    OUTPUT PROTOCOL. It says nothing about whether the model knows where to drive.
+
+    Masking the logits to the grammar forces a well-formed trajectory out of ANY
+    checkpoint, so the resulting L2 measures the prior the model actually holds
+    over the waypoint bins -- which is the question "is there any driving
+    knowledge in there" actually asks.
+
+    !! READ THE RESULT AGAINST THE MODEL-FREE BASELINES, NOT AGAINST THE
+    UNCONSTRAINED RUNS. This is a different decoding rule, so it is a different
+    arm. The finetuned model's 3.5557 was produced by free generation; putting a
+    constrained number next to it in the same column compares two things that
+    differ in more than the checkpoint.
+
+    Token ids are derived from the item processor, not hardcoded: `digitize`
+    returns 1..256 over norm in [-1, 1], and process_action adds
+    `token2id(action_start_token) + 1`, so the ids the TRAINING data actually
+    contained are start_id+2 .. start_id+1+len(bins) (measured: 10006..10261).
+    """
+
+    def __init__(self, prompt_len, start_id, end_id, value_ids, action_dim):
+        self.prompt_len = int(prompt_len)
+        self.period = action_dim + 2          # [start, dims..., end]
+        self.start_id, self.end_id = int(start_id), int(end_id)
+        self.value_ids = list(value_ids)
+
+    def __call__(self, input_ids, scores):
+        k = (input_ids.shape[1] - self.prompt_len) % self.period
+        if k == 0:
+            allowed = [self.start_id]
+        elif k == self.period - 1:
+            allowed = [self.end_id]
+        else:
+            allowed = self.value_ids
+        out = torch.full_like(scores, float("-inf"))
+        idx = torch.as_tensor(allowed, device=scores.device, dtype=torch.long)
+        out[:, idx] = scores[:, idx]
+        return out
+
+
+def build_grammar(item_processor, prompt_len, action_dim):
+    start_id = item_processor.token2id(item_processor.action_start_token)
+    end_id = item_processor.token2id(item_processor.action_end_token)
+    n_bins = len(item_processor.bins)
+    value_ids = [start_id + 1 + d for d in range(1, n_bins + 1)]
+    return LogitsProcessorList([
+        WaypointGrammar(prompt_len, start_id, end_id, value_ids, action_dim)])
+
+
 @torch.no_grad()
-def predict_waypoints(model, item_processor, image, prompt, args):
+def predict_waypoints(model, item_processor, image, prompt, args, state=None):
     """Returns (n_future, 2) waypoints in metres, or None if generation was malformed."""
-    conv = {
-        "conversations": [{"from": "human", "value": prompt + "<|image|>"}],
-        "image": [image],
-        "action": [],
-    }
+    conv = build_planning_conv(prompt, image, state)
     tokens = item_processor.process_item(conv, training_mode=False)
     input_ids = torch.tensor(tokens, dtype=torch.int64, device=model.device).unsqueeze(0)
 
-    # each waypoint emits [start, x, y, end]; leave headroom for a stray token
-    max_new = args.time_horizon * (args.action_dim + 2) + 8
+    # each waypoint emits [start, x, y, end]; leave headroom for a stray token.
+    # Under --constrained the stream cannot stray, so ask for exactly the grammar's
+    # length -- a longer budget would only append a 7th group the parser rejects.
+    constrained = getattr(args, "constrained", False)
+    max_new = args.time_horizon * (args.action_dim + 2) + (0 if constrained else 8)
     generation_config = GenerationConfig(
         max_new_tokens=max_new,
         max_length=model.config.max_position_embeddings,
@@ -178,8 +264,12 @@ def predict_waypoints(model, item_processor, image, prompt, args):
     # normal case for a mini smoke test, so treat any parse failure as a malformed
     # generation rather than letting it kill the whole eval run. The LIBERO eval
     # solver takes the same approach (broad except -> count the episode as failed).
+    lp = None
+    if constrained:
+        lp = build_grammar(item_processor, input_ids.shape[1], args.action_dim)
+
     try:
-        groups = model.generate_dis_ma(input_ids, generation_config)
+        groups = model.generate_dis_ma(input_ids, generation_config, logits_processor=lp)
     except Exception:
         return None
 
@@ -197,7 +287,7 @@ def predict_waypoints(model, item_processor, image, prompt, args):
 
 
 @torch.no_grad()
-def predict_waypoints_head(model, item_processor, image, prompt, args):
+def predict_waypoints_head(model, item_processor, image, prompt, args, state=None):
     """Same contract as predict_waypoints, but decoded by the CONTINUOUS action head.
 
     The checkpoint carries an L1-regression head (`loss_ct`) that has never been used
@@ -208,20 +298,29 @@ def predict_waypoints_head(model, item_processor, image, prompt, args):
     !! WHAT THIS DOES AND DOES NOT TEST (read before interpreting the number).
     The head's training target is
         labels_action_ct = decode_token_ids_to_actions(labels_action_dis)
-    i.e. the BIN CENTRES of the same 255-bin grid, not the true waypoints. The head
-    therefore regresses onto the quantised label and CANNOT recover the quantisation
-    error (RMS 0.065 m); both decoders sit on the same grid. What differs is the
-    predictor -- token cross-entropy + argmax against L1 regression -- so read any
-    change as "a different estimator of the same target", never as "continuous
+    i.e. the BIN CENTRES of the same 255-level grid, not the true waypoints. The head
+    therefore regresses onto the QUANTISED LABEL, so it cannot recover the
+    quantisation error even though its own outputs are continuous. What differs is
+    the predictor -- token cross-entropy + argmax against L1 regression -- so read
+    any change as "a different estimator of the same target", never as "continuous
     representation removes quantisation noise".
+
+    That is not an argument, it is measured (`analysis/measure_action_grid.py`):
+    this arm's predictions sit 25.1% / 24.6% of a grid step from the nearest level
+    (the discrete arm sits at 0.1%, i.e. exactly on it), so the head really is off
+    the lattice -- and it still lands at 3.6008 vs the discrete 3.5557 (sec.1.11).
+    Leaving the grid bought nothing, which is the cleaner form of the same point.
+
+    !! An earlier version of this docstring put the quantisation error at
+    "RMS 0.065 m". That was computed from the mini `nuscenes_norm.json` on disk,
+    not the trainval range the checkpoint was trained with (the same overwritten
+    file that bit sec.1.15). Measured on the real grid, the round-trip error is
+    0.0840 m as a 2-D displacement -- which is the figure commensurable with
+    avgL2@3s -- or 0.0770 / 0.0337 m per axis. See sec.1.16(f).
 
     Returns metres, or None when the head could not be applied.
     """
-    conv = {
-        "conversations": [{"from": "human", "value": prompt + "<|image|>"}],
-        "image": [image],
-        "action": [],
-    }
+    conv = build_planning_conv(prompt, image, state)
     tokens = item_processor.process_item(conv, training_mode=False)
     input_ids = torch.tensor(tokens, dtype=torch.int64, device=model.device).unsqueeze(0)
 
@@ -272,6 +371,25 @@ def main():
         records = json.load(f)
     if args.limit:
         records = records[: args.limit]
+
+    if args.constrained and args.decoder != "token":
+        raise SystemExit(
+            "--constrained masks the logits of the autoregressive token stream, which the "
+            "continuous head does not produce. Use --decoder token, or drop --constrained.")
+
+    if args.with_state:
+        # Refuse to run rather than silently evaluate a state-trained checkpoint
+        # on stateless records: nothing downstream would fail, the L2 would just
+        # be quietly wrong.
+        missing = sum(1 for r in records if "state" not in r)
+        if missing:
+            raise SystemExit(
+                f"--with_state given but {missing}/{len(records)} records carry no "
+                f"`state`. Rebuild {args.records_json} with data/preprocess_nuscenes.py."
+            )
+        n_invalid = sum(1 for r in records if not r.get("state_valid", 1))
+        print(f"ego status ON -- {n_invalid}/{len(records)} records have a zeroed "
+              f"(scene-start) state")
 
     # model-free prior baseline: per-command mean GT trajectory
     if args.train_records_json:
@@ -333,7 +451,8 @@ def main():
             base_metrics.append(bm)
 
         decode = predict_waypoints_head if args.decoder == "head" else predict_waypoints
-        pred = decode(model, item_processor, image, args.prompt, args)
+        pred = decode(model, item_processor, image, args.prompt, args,
+                      state=rec["state"] if args.with_state else None)
         if pred is None:
             n_failed += 1
             rows.append({"sample_token": rec["sample_token"], "scene": rec["scene"],
@@ -364,6 +483,7 @@ def main():
 
     elapsed = time.time() - t_start
     summary = {
+        "decoding": "constrained" if args.constrained else "free",
         "seed": args.seed,
         "decoder": args.decoder,
         "n_records": len(records),
@@ -395,6 +515,25 @@ def main():
     if n_failed:
         print(f"WARNING: {n_failed}/{len(records)} generations were malformed "
               f"(wrong number of action groups) and are EXCLUDED from the averages above.")
+
+    # A constrained run cannot produce a malformed group -- the grammar admits no
+    # other token at any position. If one appears, the mask is wrong (or the
+    # checkpoint's action_dim/time_horizon disagree with the flags), and the L2
+    # above is computed on a silently-selected subset. Say so instead of printing
+    # a clean-looking mean.
+    if args.constrained:
+        if n_failed:
+            print(f"\n[fatal-ish] --constrained but {n_failed} generations are still "
+                  f"malformed. The grammar admits exactly one token shape, so this means "
+                  f"the mask or --action_dim/--time_horizon is wrong. DO NOT quote the "
+                  f"numbers above.")
+        else:
+            print(f"\n[constrained] grammar held on all {len(records) - n_short_gt} records "
+                  f"(0 malformed), so this L2 is measured on the FULL set, not a subset.")
+            print(f"[constrained] read this against the model-free baselines "
+                  f"(mean-trajectory avgL2@3s "
+                  f"{summary.get('baseline_mean_traj', {}).get('avgL2@3s', float('nan')):.4f}), "
+                  f"NOT against free-generation runs -- different decoding rule, different arm.")
 
 
 if __name__ == "__main__":

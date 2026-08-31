@@ -44,6 +44,20 @@ class NuScenesFinetuneConversation(Dataset):
             self.data_list = json.load(f)
         logger.info(f"[NuScenes] {len(self.data_list)} records")
 
+        if self.with_state:
+            # Fail here rather than train for 33 h on records that carry no ego
+            # status: a missing `state` key would otherwise just mean the
+            # <|state|> placeholder never gets filled.
+            missing = sum(1 for r in self.data_list if "state" not in r)
+            if missing:
+                raise RuntimeError(
+                    f"with_state=True but {missing}/{len(self.data_list)} records have "
+                    f"no `state` field. Rebuild with data/preprocess_nuscenes.py."
+                )
+            n_invalid = sum(1 for r in self.data_list if not r.get("state_valid", 1))
+            logger.info(f"[NuScenes] ego status ON -- {n_invalid} records have an "
+                        f"invalid (zeroed) state; they are scene starts")
+
     @staticmethod
     def _resolve_json(config_path):
         if config_path.endswith(".json"):
@@ -66,10 +80,20 @@ class NuScenesFinetuneConversation(Dataset):
         # action: list of per-timestep [x, y] vectors (one <|action|> each)
         action = [list(map(float, wp)) for wp in rec["waypoints"]]
 
+        # Ego status, when enabled, is part of the OBSERVATION: it goes in the
+        # human turn next to the image, never in the gpt turn. Placeholder order
+        # here must match the order eval builds its conversation in, or training
+        # and inference tokenize the same record differently.
+        state = []
+        human = self.prompt + "<|image|>" * len(images)
+        if self.with_state:
+            state = [list(map(float, rec["state"]))]
+            human += "<|state|>"
+
         conversations = [
             {
                 "from": "human",
-                "value": self.prompt + "<|image|>" * len(images),
+                "value": human,
             },
             {
                 "from": "gpt",
@@ -77,7 +101,6 @@ class NuScenesFinetuneConversation(Dataset):
             },
         ]
 
-        state = []  # keep with_state=False for the driving setup
         return conversations, images, action, state
 
 

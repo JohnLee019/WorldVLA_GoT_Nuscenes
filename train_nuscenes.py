@@ -197,9 +197,14 @@ class NuScenesTrainSolver(PretrainSolverBase_ck_action_head):
         return ItemProcessor(target_size=self.args.resolution, tokenizer=self.args.tokenizer_path)
 
     def _dataset_func_wo_processed(self):
-        train = NuScenesFinetuneConversation(self.args.data_config_train, resolution=self.args.resolution)
-        val_ind = NuScenesFinetuneConversation(self.args.data_config_val_ind, resolution=self.args.resolution)
-        val_ood = NuScenesFinetuneConversation(self.args.data_config_val_ood, resolution=self.args.resolution)
+        # `--with_state` has to reach the dataset, not just the training loop:
+        # the loop only forwards a state the dataset actually emitted, so
+        # dropping it here trains a silently stateless model that still looks
+        # like the ego-status arm in the logs.
+        kw = dict(resolution=self.args.resolution, with_state=self.args.with_state)
+        train = NuScenesFinetuneConversation(self.args.data_config_train, **kw)
+        val_ind = NuScenesFinetuneConversation(self.args.data_config_val_ind, **kw)
+        val_ood = NuScenesFinetuneConversation(self.args.data_config_val_ood, **kw)
         return train, val_ind, val_ood
 
     # ------------------------------------------------------------------

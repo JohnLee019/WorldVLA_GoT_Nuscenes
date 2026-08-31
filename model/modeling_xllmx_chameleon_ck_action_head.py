@@ -535,10 +535,17 @@ class ChameleonXLLMXForConditionalGeneration_ck_action_head(ChameleonForConditio
         self._force_no_att_mask = False
         return dis_tokens
     
-    def generate_dis_ma(self, input_ids, generation_config):
+    def generate_dis_ma(self, input_ids, generation_config, logits_processor=None):
+        # `logits_processor` is optional and defaults to None, so every existing
+        # caller is unaffected. It exists so a caller can CONSTRAIN the stream to
+        # the [start, dims..., end] action grammar -- see eval_nuscenes.py's
+        # WaypointGrammar, which uses it to score a checkpoint that was never
+        # trained to emit these tokens at all.
         self.init_input_ids = None
+        gen_kwargs = {} if logits_processor is None else {"logits_processor": logits_processor}
         res = ChameleonForConditionalGeneration.generate(
-            self, input_ids=input_ids, generation_config=generation_config, output_hidden_states=True, training=False, return_dict_in_generate=True
+            self, input_ids=input_ids, generation_config=generation_config, output_hidden_states=True, training=False, return_dict_in_generate=True,
+            **gen_kwargs
         )
         dis_tokens = res['sequences'][:, input_ids.shape[1]:][0]
         # print(dis_tokens)

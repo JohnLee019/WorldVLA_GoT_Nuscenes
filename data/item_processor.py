@@ -214,14 +214,22 @@ class FlexARItemProcessor_Action(MMConvItemProcessor):
         conv_template=Conversation,
         target_size=512,
         device="cuda",
+        extra_media=None,
     ):
+        # `extra_media` lets a subclass register additional placeholders without
+        # duplicating this __init__ (crop sizes, VQGAN, bins). It defaults to
+        # None so every existing caller registers exactly <|image|> and
+        # <|action|> as before -- the media symbol set is part of how a record
+        # tokenizes, so it must not move for checkpoints already trained.
+        transform = {
+            "<|image|>": self.process_image,
+            "<|action|>": self.process_action,
+        }
+        transform.update(extra_media or {})
 
         super().__init__(
-            {
-                "<|image|>": self.process_image,
-                "<|action|>": self.process_action,
-            },
-            ["<|image|>", "<|action|>"],
+            transform,
+            list(transform),
             tokenizer,
             conv_template,
         )
@@ -397,12 +405,21 @@ class FlexARItemProcessor_Action(MMConvItemProcessor):
 class FlexARItemProcessor_Action_NuScenes(FlexARItemProcessor_Action):
     """Waypoint (2-D ego trajectory) variant for nuScenes planning.
 
-    Overrides ONLY the action normalization. Image tokenization, the 256-bin
+    Overrides the action normalization and, when the norm json carries driving
+    state ranges, adds the ego-status channel. Image tokenization, the 256-bin
     discretization, the action token layout ([start, dims..., end]) and
     decode_token_ids_to_actions are all inherited unchanged. Each future
     waypoint is a 2-D vector [x_forward, y_left]; feed the dataset's
     `action` as a list of such vectors (one <|action|> placeholder each).
+
+    ★The <|state|> channel is NOT inherited. `FlexARItemProcessor_Action_State`
+    is a SIBLING class (LIBERO), not an ancestor, so its state tokens, its
+    `process_state` and its (robot-arm) `norm_state` are not in scope here --
+    they are re-declared below against driving ranges.
     """
+
+    state_start_token = "<reserved15500>"
+    state_end_token = "<reserved16000>"
 
     def __init__(
         self,
@@ -414,20 +431,77 @@ class FlexARItemProcessor_Action_NuScenes(FlexARItemProcessor_Action):
         wp_max=(40.0, 12.0),
         device="cuda",
     ):
-        super().__init__(tokenizer=tokenizer, conv_template=conv_template,
-                         target_size=target_size, device=device)
-        # Prefer data-driven ranges written by data/preprocess_nuscenes.py
+        # Read the ranges BEFORE super().__init__: whether <|state|> gets
+        # registered as a media symbol has to be decided at registration time.
+        stats = {}
         if norm_path is not None and os.path.exists(norm_path):
             with open(norm_path) as f:
                 stats = json.load(f)
             wp_min, wp_max = stats["min"], stats["max"]
+        st_min, st_max = stats.get("state_min"), stats.get("state_max")
+
+        # ★Gate the channel on the ranges actually existing. A norm json without
+        # them (every pre-ego-status one, including the incumbent's) therefore
+        # produces a processor whose media symbols are exactly <|image|> and
+        # <|action|> -- byte-identical to before this class learned about state.
+        extra = {"<|state|>": self.process_state} if st_min else None
+        super().__init__(tokenizer=tokenizer, conv_template=conv_template,
+                         target_size=target_size, device=device, extra_media=extra)
+
         self.wp_min = np.array(wp_min, dtype=np.float64)
         self.wp_max = np.array(wp_max, dtype=np.float64)
         logger.info(f"[NuScenes] waypoint norm min={self.wp_min.tolist()} max={self.wp_max.tolist()}")
 
+        self.state_min = np.array(st_min, dtype=np.float64) if st_min else None
+        self.state_max = np.array(st_max, dtype=np.float64) if st_max else None
+        if self.state_min is not None:
+            logger.info(f"[NuScenes] ego status ON -- keys={stats.get('state_keys')} "
+                        f"min={self.state_min.tolist()} max={self.state_max.tolist()}")
+        else:
+            logger.info("[NuScenes] ego status OFF (norm json has no state ranges)")
+
+    @torch.no_grad()
+    def process_state(self, state) -> Dict:
+        """[start, one token per state dim, end] -- the action layout, own tokens.
+
+        `state` arrives as the dataset's one-element list of vectors, matching
+        how `action` is passed; a bare vector is accepted too.
+        """
+        state = np.asarray(state, dtype=np.float64)
+        if state.ndim > 1:
+            if state.shape[0] != 1:
+                raise RuntimeError(f"expected exactly one state vector, got {state.shape[0]}")
+            state = state[0]
+        discretized = np.digitize(self.norm_state(state), self.bins) + self.token2id(self.state_start_token) + 1
+        result_toks = [
+            self.token2id(self.state_start_token),
+            *discretized.tolist(),
+            self.token2id(self.state_end_token),
+        ]
+        # Observation, not a prediction target: the model is never asked to emit
+        # its own ego status, so these positions are masked out of the loss.
+        # (`process_action` labels its tokens because waypoints ARE the target.)
+        return {"input_ids": result_toks, "labels": [-100] * len(result_toks)}
+
     def norm_action(self, action):
         action = np.asarray(action, dtype=np.float64)
         norm = 2 * (action - self.wp_min) / (self.wp_max - self.wp_min + 1e-8) - 1
+        return np.clip(norm, a_min=-1, a_max=1)
+
+    def norm_state(self, state):
+        if self.state_min is None:
+            raise RuntimeError(
+                "norm_state called but the norm json has no `state_min`/`state_max`. "
+                "Rebuild the records with data/preprocess_nuscenes.py (it writes them), "
+                "or the state would be normalized with LIBERO robot-arm ranges."
+            )
+        state = np.asarray(state, dtype=np.float64)
+        if state.shape[-1] != self.state_min.shape[0]:
+            raise RuntimeError(
+                f"state has {state.shape[-1]} dims but the norm json describes "
+                f"{self.state_min.shape[0]}. Records and norm json are out of sync."
+            )
+        norm = 2 * (state - self.state_min) / (self.state_max - self.state_min + 1e-8) - 1
         return np.clip(norm, a_min=-1, a_max=1)
 
 
