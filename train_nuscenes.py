@@ -23,7 +23,7 @@ Launch (single node, N GPUs)
         --data_config_train  ./data/nuscenes_records/nuscenes_v1.0-mini_train.json \
         --data_config_val_ind ./data/nuscenes_records/nuscenes_v1.0-mini_val.json \
         --data_config_val_ood ./data/nuscenes_records/nuscenes_v1.0-mini_val.json \
-        --norm_path ./data/nuscenes_records/nuscenes_norm.json \
+        --norm_path ./data/nuscenes_records/nuscenes_norm_v1.0-trainval.json \
         --output_dir ./output/nuscenes_mini \
         --trainable head \
         --batch_size 1 --accum_iter 8 --epochs 20 --lr 1e-4 \

@@ -24,7 +24,7 @@ Usage (3x RTX 4090, FSDP shards the 7B across the cards)
     torchrun --nproc_per_node=3 train_nuscenes_wm.py \
         --init_from ../ckpts/<lumina-mgpt-7b> \
         --tokenizer_path ../ckpts/<lumina-mgpt-7b> \
-        --norm_path ./data/nuscenes_records/nuscenes_norm.json \
+        --norm_path ./data/nuscenes_records/nuscenes_norm_v1.0-trainval.json \
         --data_config_train    ./data/nuscenes_wm_records/nuscenes_wm_v1.0-mini_train.json \
         --data_config_val_ind  ./data/nuscenes_wm_records/nuscenes_wm_v1.0-mini_val.json \
         --data_config_val_ood  ./data/nuscenes_wm_records/nuscenes_wm_v1.0-mini_val.json \
