@@ -59,7 +59,8 @@ cd "$(dirname "$0")/.." || exit 1
 # Overridable: SRC=... EPOCHS=... LR=... bash run_navsim.sh
 
 set -euo pipefail
-cd "$(dirname "$0")"
+# (no cd here: the header already cd'd to the repo root, and every path below is
+# root-relative. Re-entering scripts/ broke all of them -- see handoff sec.9.)
 
 # WARM START from the nuScenes model by default. Same task family, same image
 # tokenizer, same action_dim; only the head shape differs and that is re-init.

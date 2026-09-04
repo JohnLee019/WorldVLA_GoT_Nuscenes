@@ -25,7 +25,8 @@ cd "$(dirname "$0")/.." || exit 1
 #   A smaller-but-real gain is still a RESULT (report it), just not an adoption.
 
 set -euo pipefail
-cd "$(dirname "$0")"
+# (no cd here: the header already cd'd to the repo root, and every path below is
+# root-relative. Re-entering scripts/ broke all of them -- see handoff sec.9.)
 
 REC=./data/nuscenes_records
 SET=$REC/nuscenes_val_scenespread.json          # 600 records / all 150 scenes
@@ -37,7 +38,7 @@ run_one () {                                     # $1 = ckpt dir, $2 = run name
     --resume_path "$1" \
     --tokenizer_path ../ckpts/Lumina-mGPT-7B-768 \
     --records_json "$SET" \
-    --norm_path $REC/nuscenes_norm.json \
+    --norm_path $REC/nuscenes_norm_v1.0-trainval.json \
     --train_records_json $REC/nuscenes_v1.0-trainval_train.json \
     --output_dir ./results/base_ckpt/$2 \
     --resolution 256 --device "$GPU" --seed 42

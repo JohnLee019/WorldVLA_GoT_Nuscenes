@@ -56,7 +56,7 @@ VAL=./data/nuscenes_records/nuscenes_v1.0-trainval_val_turns.json
 # the mean-trajectory prior stays fitted on the FULL train split (it is built
 # per command, so a turn-only eval still reads the same left/right means)
 TRAIN=./data/nuscenes_records/nuscenes_v1.0-trainval_train.json
-NORM=./data/nuscenes_records/nuscenes_norm.json
+NORM=./data/nuscenes_records/nuscenes_norm_v1.0-trainval.json
 COLL=./data/nuscenes_records/nuscenes_collision_v1.0-trainval_val.json
 # 0 = every record. The turn split is 619 records (259 left / 360 right) across
 # 70 scenes, so taking all of them costs only ~24% more than --limit 500 and

@@ -28,7 +28,8 @@ cd "$(dirname "$0")/.." || exit 1
 # lr is the first thing to halve again.
 
 set -euo pipefail
-cd "$(dirname "$0")"
+# (no cd here: the header already cd'd to the repo root, and every path below is
+# root-relative. Re-entering scripts/ broke all of them -- see handoff sec.9.)
 
 SRC=./output/nuscenes_trainval_full_r256_cont2/epoch1
 OUT=./output/nuscenes_trainval_full_r256_cont3
@@ -64,7 +65,7 @@ torchrun --nproc_per_node=3 train_nuscenes.py \
   --data_config_train $REC/nuscenes_v1.0-trainval_train.json \
   --data_config_val_ind $REC/nuscenes_v1.0-trainval_val.json \
   --data_config_val_ood "$VAL_OOD" \
-  --norm_path $REC/nuscenes_norm.json \
+  --norm_path $REC/nuscenes_norm_v1.0-trainval.json \
   --output_dir "$OUT" \
   --trainable full --optimizer paged_adamw8bit \
   --batch_size 2 --accum_iter 4 --resolution 256 --grad_precision bf16 \

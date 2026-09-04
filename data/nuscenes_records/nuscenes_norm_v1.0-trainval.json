@@ -1,0 +1,23 @@
+{
+  "min": [
+    -3.0241,
+    -16.6451
+  ],
+  "max": [
+    69.786,
+    16.6451
+  ],
+  "n_future": 6,
+  "action_dim": 2,
+  "cameras": [
+    "CAM_FRONT"
+  ],
+  "version": "v1.0-trainval",
+  "_provenance": {
+    "what": "The action grid the incumbent checkpoint (_cont2/epoch1) was trained on. Every number in handoff section 1 sits on this grid.",
+    "why_this_file_exists": "data/nuscenes_records/nuscenes_norm.json in this repo is the v1.0-mini fit (it was overwritten once; see handoff section 9). The README used to say the shipped norm json reproduces the paper numbers -- it does not. Evaluating the incumbent on the mini grid returns avgL2@3s 3.7889 instead of 3.5557 without crashing.",
+    "min_max_source": "Stated identically in four places: handoff section 1.15, section 1.16(f), section 9, and asserted by scripts/run_state.sh's pre-flight gate (want_min/want_max). Cross-checked by the quantisation-width diagnostic in section 9: 2*16.6451/255 = 0.1306 is the correct lateral step, 2*15.1637/255 = 0.1190 is the mini one.",
+    "not_a_full_norm_file": "raw_stats and n_waypoint_vectors are absent -- they were never recovered locally, only min/max were. No consumer reads them: item_processor reads min, max, state_min, state_max, state_keys only. Do NOT treat this as the output of preprocess_nuscenes.py; if you rebuild the trainval records, use that script's own output instead.",
+    "no_state_ranges": "state_min/state_max are deliberately absent. This is the PRE-ego-status grid, and FlexARItemProcessor_Action_NuScenes gates the <|state|> media symbol on those keys existing -- so this file reproduces the incumbent's tokenisation exactly. The ego-status arm uses its own norm json under data/nuscenes_records_state/ (see scripts/run_state.sh)."
+  }
+}
