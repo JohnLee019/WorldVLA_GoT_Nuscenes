@@ -23,7 +23,7 @@ Usage mirrors verify_got_prefix_nuscenes.py:
         --resume_path output/nuscenes_trainval_full_r256/epoch0 \
         --tokenizer_path ../ckpts/Lumina-mGPT-7B-768 \
         --records_json data/nuscenes_records/nuscenes_v1.0-trainval_val.json \
-        --norm_path data/nuscenes_records/nuscenes_norm.json \
+        --norm_path data/nuscenes_records/nuscenes_norm_v1.0-trainval.json \
         --prefix_k 2 --limit 5 --device 0
 """
 # --- 리포 루트를 import 경로에 넣는다 -------------------------------------

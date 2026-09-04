@@ -184,7 +184,7 @@ cat <<EOF
          --data_config_train   ./data/nuscenes_records/nuscenes_v1.0-mini_train.json \\
          --data_config_val_ind ./data/nuscenes_records/nuscenes_v1.0-mini_val.json \\
          --data_config_val_ood ./data/nuscenes_records/nuscenes_v1.0-mini_val.json \\
-         --norm_path ./data/nuscenes_records/nuscenes_norm.json \\
+         --norm_path ./data/nuscenes_records/nuscenes_norm_v1.0-trainval.json \\
          --output_dir ./output/nuscenes_mini \\
          --trainable head --ft true \\
          --batch_size 1 --accum_iter 8 --epochs 20 --lr 1e-4 \\
@@ -202,7 +202,7 @@ cat <<EOF
          --resume_path ./output/nuscenes_mini/epoch19 \\
          --tokenizer_path $CKPT_DIR/Lumina-mGPT-7B-768 \\
          --records_json ./data/nuscenes_records/nuscenes_v1.0-mini_val.json \\
-         --norm_path ./data/nuscenes_records/nuscenes_norm.json \\
+         --norm_path ./data/nuscenes_records/nuscenes_norm_v1.0-trainval.json \\
          --output_dir ./results/nuscenes_eval
 
 EOF

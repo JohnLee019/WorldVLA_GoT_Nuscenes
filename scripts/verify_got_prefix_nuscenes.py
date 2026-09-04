@@ -30,7 +30,7 @@ Usage
         --resume_path ./output/nuscenes_mini/epoch24 \
         --tokenizer_path ~/ckpts/models--Alpha-VLLM--Lumina-mGPT-7B-768 \
         --records_json ./data/nuscenes_records/nuscenes_v1.0-mini_val.json \
-        --norm_path ./data/nuscenes_records/nuscenes_norm.json \
+        --norm_path ./data/nuscenes_records/nuscenes_norm_v1.0-trainval.json \
         --prefix_k 2 --limit 20
 
 Read the caveats in eval_nuscenes.py first: mini val is not comparable to mini

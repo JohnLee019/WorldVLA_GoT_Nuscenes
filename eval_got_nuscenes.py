@@ -63,7 +63,7 @@ Usage
         --tokenizer_path ../ckpts/Lumina-mGPT-7B-768 \
         --records_json ./data/nuscenes_records/nuscenes_v1.0-trainval_val.json \
         --train_records_json ./data/nuscenes_records/nuscenes_v1.0-trainval_train.json \
-        --norm_path ./data/nuscenes_records/nuscenes_norm.json \
+        --norm_path ./data/nuscenes_records/nuscenes_norm_v1.0-trainval.json \
         --collision_json ./data/nuscenes_records/nuscenes_collision_v1.0-trainval_val.json \
         --output_dir ./results/nuscenes_got \
         --k_candidates 4 --beam_width 2 --seeds 42 43 44 --limit 500
@@ -96,6 +96,13 @@ from data.item_processor import FlexARItemProcessor_Action_NuScenes
 from data.dataset_nuscenes import DEFAULT_PROMPT
 from got_drive.eval_crop import crop_for_eval
 from got_drive.got_pipeline_drive import DriveGoTConfig, DriveGoTPipeline, make_model_generate_fn
+from got_drive.graph import GraphPlanner
+# The --planner -> graph_kind map and the per-arm kwargs. Imported rather than
+# rebuilt here: an inline if-chain is where the aggregate/improve arms silently
+# became the control arm, and it could not be unit-tested because this module
+# needs torch. See got_drive/graph/planner.py.
+from got_drive.graph.planner import (AGGREGATE_PLANNERS, GRAPH_PLANNERS,
+                                     INTENT_PLANNERS, planner_kwargs)
 from got_drive.planning_metrics import (across_seeds, oracle_and_selection,
                                         paired_comparison, tail_stats)
 # feasibility predicate, reused to audit FUSED outputs: a fused trajectory is
@@ -105,7 +112,7 @@ from got_drive.scoring_driving import _feasible
 # Reuse the base eval's model loader, metric, free-run generator, seeding and
 # mean-trajectory baseline verbatim so GoT and baselines share identical code.
 from eval_nuscenes import (load_model, l2_metrics, predict_waypoints,
-                           set_seed, compute_mean_trajectories)
+                           set_seed, compute_mean_trajectories, check_action_grid)
 
 
 def get_args():
@@ -132,6 +139,111 @@ def get_args():
                         "not re-seeded, so it inherits the RNG state left by the previous record's "
                         "GoT, whose draw count is k + 2*beam*k. See got_drive/eval_crop.py. "
                         "Never mix the two inside one table.")
+    p.add_argument("--intent_speed_scales", type=float, nargs="+", default=None,
+                   help="--planner intent only: multipliers on the model's own implied first-step "
+                        "displacement. Default (0.0, 0.5, 1.0). ★These are prescribed by "
+                        "measurement, not taste: Step 2.11 found our pool at GAP_dep -0.0942 "
+                        "(worse than random) with the speed ladder at v x0.60-1.50 when the room "
+                        "is at v x0.00-0.45, and Step 2.10 put the optimum at v x0.45-0.60 with "
+                        "the conservative end MANDATORY. Quote any GAP with its N (Step 2.8).")
+    p.add_argument("--intent_curvatures", type=float, nargs="+", default=None,
+                   help="--planner intent/aggregate/improve: constant curvatures in 1/m. "
+                        "Default is intent.DEFAULT_CURVATURES = (0.0,) -- SPEED-ONLY, and that "
+                        "is a measurement, not a simplification. ★This help text used to claim "
+                        "(-0.01, 0.0, +0.01), i.e. NAVSIM's values, which this package asserts "
+                        "in its selftest CANNOT separate on this horizon: lateral offset grows "
+                        "as k*L^2/2, so k=0.01 is 0.02 m over a 2 m first step and only ~0.72 m "
+                        "over the whole 3 s horizon -- both under §1.5's 1 m floor, below which "
+                        "0/600 records flipped a token. Those values were fitted to a 4 s nuPlan "
+                        "horizon. For a real curvature axis use intent.USABLE_CURVATURES "
+                        "(-0.05, 0.0, +0.05) AND --intent_anchor_steps >= 2, then confirm on "
+                        "`got_intent_sep_max` per record. ★Keep them SYMMETRIC about 0 -- the "
+                        "'do not do' list rejects the k=+0.005 cell because it sits on an "
+                        "unexplained left bias (Step 2.10d), which Step 2.7e had already "
+                        "discarded once.")
+    p.add_argument("--intent_anchor_steps", type=int, default=1,
+                   help="--planner intent only: how many waypoints the intent commits before "
+                        "the model continues. 1 expresses SPEED and essentially not curvature: "
+                        "an arc's lateral offset grows as k*L^2/2, so k=0.01 over a 2 m step is "
+                        "0.02 m and even over the whole 3 s horizon only ~0.72 m -- both under "
+                        "§1.5's 1 m floor. ★A curvature axis therefore needs BOTH k=±0.05 and "
+                        "anchor_steps>=2. Every committed step is one the model no longer "
+                        "chooses, so raise it only for the axis that needs it.")
+    p.add_argument("--intent_variants", type=int, default=2,
+                   help="--planner intent only: realisations per intent. Cost is "
+                        "1 + n_intents*variants forward calls, NOT the incumbent's 20 -- report "
+                        "the call count alongside the L2, and note that §1.5's free pairing only "
+                        "holds between arms with equal call counts.")
+    p.add_argument("--aggregate_method", choices=["median", "mean"], default="median",
+                   help="--planner aggregate only: how one intent's realisations are combined. "
+                        "Median is the estimator matched to an L2 metric (got_drive/fusion.py) "
+                        "and is what §1.5 used.")
+    p.add_argument("--aggregate_keep_inputs", action="store_true",
+                   help="--planner aggregate only: keep each intent's realisations in the pool "
+                        "alongside its aggregate. ★Without this the pool handed downstream is "
+                        "just the aggregates, so minADE_C is computed over a DIFFERENT pool than "
+                        "the other arms and `d_pool` stops being comparable with §1 (where "
+                        "fusion left the pool at exactly 0). Say which one a number came from.")
+    p.add_argument("--improve_tries", type=int, default=2,
+                   help="--planner improve only: repair attempts per infeasible candidate. "
+                        "Each attempt clamps the violating waypoint to the limit it broke and "
+                        "regenerates the tail from there. ★A repair smaller than §1.5's ~1 m "
+                        "floor cannot change the sampled tokens (0/600 flipped), so the csv "
+                        "logs every repair's prefix delta and counts the ones below it.")
+    p.add_argument("--improve_no_aggregate", action="store_true",
+                   help="--planner improve only: skip the Aggregate fan-out so ValidateAndImprove "
+                        "runs directly on the realisations. Isolates Improve's contribution from "
+                        "Aggregate's -- run both if you want to attribute either.")
+    p.add_argument("--planner",
+                   choices=["pipeline", "graph", "intent", "aggregate", "improve"],
+                   default="pipeline",
+                   help="'pipeline' = got_drive.got_pipeline_drive.DriveGoTPipeline, the "
+                        "incumbent every number in §1 was produced by. 'graph' = the same "
+                        "search declared as a Graph of Operations and run by the upstream-shaped "
+                        "FIFO controller (got_drive/graph/). ★They are meant to be IDENTICAL: "
+                        "the graph arm's only job at this stage is to reproduce the incumbent "
+                        "bit-for-bit, which is the control that licenses everything built on it "
+                        "later (same idea as --fuse_top_m 1). A difference here is a bug, not a "
+                        "result. Not supported by 'graph': --fuse, --wm_path scoring, "
+                        "--final_weights, --w_likelihood -- each raises rather than running a "
+                        "silently different arm. "
+                        "★'intent' branches on DRIVING HYPOTHESES (speed profile x curvature) "
+                        "instead of on time -- §1.17 measured 1.52 live options at stage 1 with "
+                        "48%% of records having exactly one, so the incumbent deliberates late "
+                        "while the decisive longitudinal error is fixed early. This is NOT a "
+                        "control arm: it cannot reproduce 3.5557 and is not meant to. Put it in "
+                        "results/graph/ and never pair it against the §1 tables. ⚠️Read "
+                        "`got_intent_separated` in the csv BEFORE the L2 -- if the intents did "
+                        "not separate by >=1 m the model ignored them (§1.5: sub-metre prefix "
+                        "perturbations flipped 0 of 600 records) and the arm measured nothing.")
+    p.add_argument("--graph_keep_valid", action="store_true",
+                   help="graph planner only: run KeepValid as a real filtering operation "
+                        "instead of a pass-through. ★This is a DIFFERENT ARM, not the control -- "
+                        "the incumbent's feasibility veto still lives inside rank_candidates, so "
+                        "this filters twice. It exists because §1.7(b)3 traced the z-norm veto "
+                        "bug to validity being folded into the score; separating the operation "
+                        "is the structural fix, and removing the in-score veto is the other half "
+                        "of that change (not done yet).")
+    p.add_argument("--graph_trace_dir", default=None,
+                   help="graph planner only: write each record's executed operation graph "
+                        "(topology + every thought's trajectory and provenance) as JSON here. "
+                        "★Costs no model calls. §1.10(a2) could not separate 'the model did not "
+                        "generate it' from 'the beam pruned it' because the pre-prune pool was "
+                        "not retained; §1.17 was possible only because the surviving candidates' "
+                        "trajectories were. Record it from the start.")
+    p.add_argument("--with_state", action="store_true",
+                   help="feed causal ego status (<|state|>) alongside the image, in BOTH the "
+                        "GoT candidate generator and the greedy free-run baseline. MUST match "
+                        "how the checkpoint was trained -- a state-trained checkpoint evaluated "
+                        "without it (or vice versa) is off-distribution and the L2 is meaningless. "
+                        "Records need a `state` field (data/preprocess_nuscenes.py) and the norm "
+                        "json needs `state_min`. ★Results belong in results/egostate/, never "
+                        "paired against the §1 tables -- different setup (§8).")
+    p.add_argument("--allow_mini_grid", action="store_true",
+                   help="run even when --norm_path is the v1.0-mini action grid. ★Never right "
+                        "for a new number -- the incumbent scores 3.7889 instead of 3.5557 on it "
+                        "and nothing else fails (§9). Exists only to reproduce a historical "
+                        "mini-grid run on purpose.")
     p.add_argument("--seeds", type=int, nargs="+", default=None,
                    help="run GoT under several seeds and report mean+-std across them "
                         "(e.g. --seeds 42 43 44). GoT sampling is stochastic and the "
@@ -371,6 +483,21 @@ def main():
     if args.limit:
         records = records[: args.limit]
 
+    # Refuse to run rather than silently evaluate a state-trained checkpoint on
+    # stateless records: nothing downstream would fail, every arm would just be
+    # quietly off-distribution. Same guard as eval_nuscenes.py, on purpose --
+    # the GoT path has MORE ways to lose the channel (candidate generator and
+    # greedy baseline are separate call sites).
+    if args.with_state:
+        missing = sum(1 for r in records if "state" not in r)
+        if missing:
+            raise SystemExit(
+                f"--with_state given but {missing}/{len(records)} records carry no "
+                f"`state`. Rebuild {args.records_json} with data/preprocess_nuscenes.py.")
+        n_invalid = sum(1 for r in records if not r.get("state_valid", 1))
+        print(f"[eval-got] ego status ON -- {n_invalid}/{len(records)} records have a "
+              f"zeroed (scene-start) state")
+
     # model-free prior baseline: per-command mean GT trajectory
     if args.train_records_json:
         with open(args.train_records_json) as f:
@@ -402,12 +529,20 @@ def main():
     )
     print(f"[eval-got] waypoint un-norm range: min={item_processor.wp_min.tolist()} "
           f"max={item_processor.wp_max.tolist()}")
+    check_action_grid(item_processor, args.norm_path,
+                      allow_mini=args.allow_mini_grid)
 
     model = load_model(args)
 
     # generate_fn is image-agnostic (image is passed per plan()); build it once.
     # Wrapped so every model call is counted -> inference-cost metric.
-    generate_fn = _CountingFn(make_model_generate_fn(model, item_processor, args.prompt, args))
+    # `state_holder` carries the current record's ego status into that single fn;
+    # the record loop writes it before each plan(). None throughout when
+    # --with_state is off, which is byte-identical to the pre-ego-status build.
+    state_holder = [None]
+    generate_fn = _CountingFn(make_model_generate_fn(
+        model, item_processor, args.prompt, args,
+        state_holder=state_holder if args.with_state else None))
 
     # World-model uses (optional, needs a trained WM). Context Update (Mode B
     # next-frame prediction) and plausibility scoring are independent, so any of
@@ -457,12 +592,64 @@ def main():
               "from the summary. minADE_C stays comparable (the pool is "
               "unchanged in 'final' scope).")
 
+    # ── intent arm: the hypothesis set, built once and printed ───────────────
+    intent_set = None
+    # The shared tuple, not a fourth hand-written copy of the same list: the arm
+    # guards drifting apart is precisely how aggregate/improve lost their kwargs.
+    if args.planner in INTENT_PLANNERS:
+        from got_drive.graph import make_intent_grid, MIN_SEPARATION_M
+        kw = {}
+        if args.intent_speed_scales:
+            kw["speed_scales"] = tuple(args.intent_speed_scales)
+        if args.intent_curvatures:
+            kw["curvatures"] = tuple(args.intent_curvatures)
+        intent_set = make_intent_grid(**kw)
+        n_calls = 1 + len(intent_set) * args.intent_variants
+        print(f"[eval-got] INTENT arm: {len(intent_set)} intents x "
+              f"{args.intent_variants} variants -> {n_calls} forward calls/record "
+              f"(the incumbent makes {args.k_candidates * (1 + 2 * args.beam_width)}). "
+              f"Report the call count with the L2.")
+        print(f"[eval-got]   {[i.name for i in intent_set]}")
+        print(f"[eval-got] ⚠️ this arm is NOT the control -- it cannot reproduce 3.5557. "
+              f"Keep it out of the §1 tables.")
+        print(f"[eval-got] ⚠️ check got_intent_separated before the L2: intents closer than "
+              f"{MIN_SEPARATION_M} m do not move the model (§1.5, 0/600 tokens flipped).")
+
+    # ── the arm's identity, resolved ONCE and printed ────────────────────────
+    # ★Built here, used for every record AND written into summary.json, so the
+    # summary cannot describe an arm other than the one that ran. The bug this
+    # replaces: an inline if-chain gave --planner aggregate/improve an EMPTY kwarg
+    # dict, GraphPlanner's graph_kind defaulted to "staged", and both arms ran the
+    # incumbent control while the summary said otherwise. Printing it means a
+    # mismatch is visible in the log before the run finishes, not after the table
+    # is written (§9).
+    arm_kw = planner_kwargs(args, intents=intent_set)
+    if arm_kw:
+        print(f"[eval-got] graph arm: --planner {args.planner} -> graph_kind="
+              f"{arm_kw['graph_kind']!r}, keep_valid={arm_kw['keep_valid']}"
+              + (f", variants={arm_kw['variants']}, anchor_steps={arm_kw['anchor_steps']}"
+                 if "variants" in arm_kw else "")
+              + (f", aggregate={arm_kw['aggregate_method']}"
+                 f"/keep_inputs={arm_kw['aggregate_keep_inputs']}"
+                 if "aggregate_method" in arm_kw else "")
+              + (f", improve_tries={arm_kw['num_tries']}"
+                 f"/aggregate={arm_kw['improve_aggregate']}"
+                 if "num_tries" in arm_kw else ""))
+        if arm_kw["keep_valid"]:
+            print("[eval-got] ⚠️ --graph_keep_valid filters BEFORE KeepBestN, so "
+                  "minADE_C and the selection gap are computed over the FEASIBLE "
+                  "SUBSET -- a smaller denominator, not a better generator. "
+                  "`got_keep_valid_dropped` in the csv says by how much; do not "
+                  "compare minADE_C against an arm run without this flag.")
+
     # Scene-grounded final re-rank. Built from the SAME model as generation (no
     # extra checkpoint, no extra GPU), so it is only wired when asked for.
     lik_score_fn = None
     if args.w_likelihood != 0.0:
         from got_drive.segment_generation import make_likelihood_score_fn
-        lik_score_fn = make_likelihood_score_fn(model, item_processor, args.prompt, args)
+        lik_score_fn = make_likelihood_score_fn(
+            model, item_processor, args.prompt, args,
+            state_holder=state_holder if args.with_state else None)
         print(f"[eval-got] model self-likelihood final re-rank ON (w={args.w_likelihood})")
     # accurate label: Mode B iff a context-update fn is active; +WM-score iff the
     # plausibility rerank is active (wm_path with both toggles off -> plain Mode A).
@@ -521,6 +708,10 @@ def main():
         gt = np.array(rec["waypoints"], dtype=np.float64)
         command = rec["command"]
         token = rec["sample_token"]
+        # Both arms read the ego status from here: the GoT candidate generator via
+        # the closure built above, the greedy baseline via its own `state=` below.
+        # Setting it in one place is what keeps them from drifting apart.
+        state_holder[0] = rec["state"] if args.with_state else None
         if gt.shape[0] < args.time_horizon:
             # every predictor emits exactly time_horizon waypoints, so a short GT
             # would raise a broadcast error deep in l2_metrics after hours of GPU
@@ -543,7 +734,8 @@ def main():
         base_m = None
         if not args.no_baseline:
             t_b = time.perf_counter()
-            pred_base = predict_waypoints(model, item_processor, image, args.prompt, args)
+            pred_base = predict_waypoints(model, item_processor, image, args.prompt, args,
+                                          state=state_holder[0])
             base_sec.append(time.perf_counter() - t_b)
             if pred_base is None:
                 n_base_failed += 1
@@ -574,16 +766,81 @@ def main():
             # Modulo keeps it inside np.random.seed's [0, 2**32) domain -- without
             # it any --seeds value above ~4294 raises ValueError.
             set_seed((s * 1_000_003 + i) % (2 ** 31 - 1))
-            pipe = DriveGoTPipeline(
+            # Same construction for both planners: GraphPlanner deliberately wears
+            # DriveGoTPipeline's interface so this loop -- and every metric,
+            # csv column and bootstrap downstream of it -- is shared, not forked.
+            planner_cls = (GraphPlanner if args.planner in GRAPH_PLANNERS
+                           else DriveGoTPipeline)
+            # ★The kwargs live in got_drive/graph/planner.py, not inline here.
+            # Inline, this was `if args.planner in ("graph", "intent"):` wrapping
+            # every branch below it, so --planner aggregate and --planner improve
+            # got an EMPTY dict, GraphPlanner defaulted graph_kind to "staged", and
+            # both arms silently ran the INCUMBENT CONTROL ARM while summary.json
+            # said "planner": "aggregate". The tell was the CALL COUNT: the control arm's
+            # k*(1+2*beam) where the intent-based arms make 1 + n_intents*variants
+            # (+ repairs). ⚠️those are config-dependent -- do not quote absolute
+            # numbers here, quote the formula.
+            # As a pure function the mapping is testable without torch, and
+            # got_drive.graph.selftest now asserts every --planner value lands on
+            # the graph_kind its name promises.
+            planner_kw = arm_kw
+            pipe = planner_cls(
                 cfg, generate_fn,
                 initial_image=image,
                 context_update_fn=context_update_fn,
                 wm_score_fn=wm_score_fn,
                 lik_score_fn=lik_score_fn,
+                **planner_kw,
             )
             generate_fn.reset()
             t_g = time.perf_counter()
             merged, _ = pipe.plan(command)
+            if args.planner in INTENT_PLANNERS:
+                # Logged per record, not aggregated: whether the intents separated
+                # is a property of THIS scene's speed (a stopped ego makes every
+                # multiplier collapse to ~0). An arm-level mean would hide the
+                # records where the hypothesis set degenerated to one plan.
+                sep = pipe.last_separation or {}
+                row["got_intent_sep_min"] = sep.get("min_pairwise")
+                row["got_intent_sep_max"] = sep.get("max_pairwise")
+                row["got_intent_separated"] = sep.get("separated")
+                row["got_intent_v0_step"] = sep.get("v0_step")
+            if args.planner in AGGREGATE_PLANNERS:
+                # ★WITHOUT THIS THE AGGREGATE ARM HAS NO PER-RECORD EVIDENCE.
+                # `fuse_trajectories` returns its single input UNCHANGED, so an
+                # intent with one surviving realisation aggregates nothing: an arm
+                # where that happens on every intent of every record is a pure
+                # identity wearing Aggregate's name, and its L2 would be reported
+                # as an Aggregate result. `n_identity` is what says so. Same
+                # discipline as got_intent_separated -- read it BEFORE the L2.
+                agg = pipe.last_aggregate or {}
+                row["got_aggregate_n"] = agg.get("n_aggregates")
+                # Per intent, not summed: one intent starved to a single
+                # realisation is invisible in a total.
+                row["got_aggregate_inputs"] = agg.get("n_inputs")
+                row["got_aggregate_identity"] = agg.get("n_identity")
+                row["got_aggregate_infeasible_dropped"] = agg.get("n_infeasible_dropped")
+            if args.planner in GRAPH_PLANNERS:
+                # How many candidates KeepValid removed BEFORE KeepBestN, i.e. how
+                # much smaller the pool minADE_C and the selection gap were
+                # computed over. Always written (0 when --graph_keep_valid is off)
+                # so the column exists in every graph-arm csv and a shrunken
+                # denominator can never be mistaken for a better generator.
+                kv = pipe.last_keep_valid or {}
+                row["got_keep_valid_dropped"] = kv.get("n_dropped")
+            if args.planner == "improve":
+                # Cost here is DATA-DEPENDENT (only infeasible candidates are
+                # repaired), so §1.5's free pairing does not hold for this arm.
+                # Log the per-record call count and report its distribution.
+                imp = pipe.last_improve or {}
+                row["got_improve_invalid"] = imp.get("n_invalid")
+                row["got_improve_repaired"] = imp.get("n_repaired")
+                row["got_improve_calls"] = imp.get("n_generate_calls")
+                row["got_improve_below_floor"] = imp.get("n_repairs_below_floor")
+            if args.planner in GRAPH_PLANNERS and args.graph_trace_dir:
+                Path(args.graph_trace_dir).mkdir(parents=True, exist_ok=True)
+                pipe.last_controller.output_graph(
+                    str(Path(args.graph_trace_dir) / f"{token}_seed{s}.json"))
             acc["sec"].append(time.perf_counter() - t_g)
             acc["calls"].append(generate_fn.n)
 
@@ -703,7 +960,42 @@ def main():
         per_seed[str(s)] = blk
 
     summary = {
+        # ★THE RUN'S OWN CONFIGURATION, IN ITS OWN ARTIFACT.
+        # A measurement audit found that summary.json recorded no arm settings at
+        # all -- `headline/ref` and `headline/temp_tight` were distinguishable
+        # only by directory name. That is exactly why the `--planner aggregate`
+        # bug (which silently ran the control arm) could not be detected from the
+        # artifacts, and it is the same class as §9's "the runner only overwrites
+        # the arm it runs, so an old run stays in the table". Writing argv here
+        # closes it: every number now carries the flags that produced it.
+        "args": {k: (list(v) if isinstance(v, tuple) else v)
+                 for k, v in sorted(vars(args).items())},
         "mode": mode,
+        # Which planner produced these numbers. In the summary rather than only in
+        # the shell history because §9's failure mode is exactly this: a runner
+        # overwrites only the arm it ran, an old directory survives, and two arms
+        # end up in one table with nothing in the artefacts saying they differ.
+        "planner": args.planner,
+        # ★READ OFF THE KWARGS THAT WERE ACTUALLY PASSED, not re-derived from
+        # args. Re-derivation is what let "planner": "aggregate" sit next to an
+        # arm that ran as "staged", and the same re-derived conditions here were
+        # ALSO wrong (graph_keep_valid was reported only for graph/intent, and
+        # anchor_steps only for intent, though aggregate and improve use both).
+        # Reporting the real kwargs makes the summary an artefact OF the run
+        # rather than a second opinion about it.
+        "graph_kind": arm_kw.get("graph_kind"),
+        "graph_keep_valid": arm_kw.get("keep_valid"),
+        # The hypothesis set is part of the arm's identity: Step 2.8 showed GAP and
+        # the sign-transition point are both functions of N, so a result quoted
+        # without its intent set (and its N) is not interpretable.
+        "intents": ([i.name for i in intent_set] if intent_set else None),
+        "intent_variants": arm_kw.get("variants"),
+        "improve_tries": arm_kw.get("num_tries"),
+        "improve_aggregate": arm_kw.get("improve_aggregate"),
+        "aggregate_method": arm_kw.get("aggregate_method"),
+        "aggregate_keep_inputs": arm_kw.get("aggregate_keep_inputs"),
+        "intent_anchor_steps": arm_kw.get("anchor_steps"),
+        "ego_status": bool(args.with_state),
         "seeds": seeds,
         "n_records": len(records),
         "n_skipped_short_gt": n_short_gt,

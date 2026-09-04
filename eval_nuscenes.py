@@ -17,7 +17,7 @@ Usage
         --resume_path ./output/nuscenes_mini/epoch19 \
         --tokenizer_path ~/ckpts/models--Alpha-VLLM--Lumina-mGPT-7B-768 \
         --records_json ./data/nuscenes_records/nuscenes_v1.0-mini_val.json \
-        --norm_path ./data/nuscenes_records/nuscenes_norm.json \
+        --norm_path ./data/nuscenes_records/nuscenes_norm_v1.0-trainval.json \
         --output_dir ./results/nuscenes_eval
 
 IMPORTANT
@@ -122,6 +122,11 @@ def get_args():
                         "evaluated without it (or vice versa) is off-distribution and the "
                         "L2 is meaningless. Records need a `state` field "
                         "(data/preprocess_nuscenes.py) and the norm json needs `state_min`.")
+    p.add_argument("--allow_mini_grid", action="store_true",
+                   help="run even when --norm_path is the v1.0-mini action grid. ★Never right "
+                        "for a new number -- the incumbent scores 3.7889 instead of 3.5557 on it "
+                        "and nothing else fails (§9). Exists only to reproduce a historical "
+                        "mini-grid run on purpose.")
     p.add_argument("--train_records_json", default=None,
                    help="records to compute the mean-trajectory baseline from (ideally the TRAIN "
                         "split). If unset, the eval split is used (slightly optimistic).")
@@ -158,6 +163,64 @@ def load_model(args):
 def unnorm_waypoints(norm_wp, wp_min, wp_max):
     """[-1, 1] bin space -> metres. Inverse of item_processor.norm_action."""
     return (norm_wp + 1) / 2 * (wp_max - wp_min + 1e-8) + wp_min
+
+
+# The action grid the incumbent (`_cont2/epoch1`) was TRAINED on -- a trainval fit.
+# Stated four times in the handoff (sec.1.15, sec.1.16f, sec.9) and asserted by
+# scripts/run_state.sh's pre-flight gate.
+INCUMBENT_GRID = ([-3.0241, -16.6451], [69.786, 16.6451])
+# The v1.0-mini fit that was once written over the norm json on disk. Evaluating
+# the incumbent on it does not crash -- it returns avgL2@3s 3.7889 instead of
+# 3.5557 (sec.9). A plausible wrong number is the whole danger.
+MINI_GRID = ([-1.0193, -15.1637], [56.432, 15.1637])
+
+
+def check_action_grid(item_processor, norm_path, allow_mini=False):
+    """Say out loud which action grid this run is on, and REFUSE if it is the mini one.
+
+    ⚠️★IT REFUSES, IT DOES NOT MERELY WARN -- and that is a correction to this
+    guard's own first version. An independent measurement audit caught it
+    `print()`-ing and continuing, while every real run is launched as
+    `... > run.log`, where a warning scrolls past unread hours before anyone opens
+    the summary. That is sec.9's lesson landing on the fix written to satisfy it:
+    *"'가드를 넣었다'와 '가드가 이 파일에 걸린다'는 다른 진술이다."* A guard the
+    operator never sees is not a guard. `--allow_mini_grid` exists only to
+    reproduce a historical mini-grid run on purpose; it is never right for a new
+    number.
+
+    WHY THIS EXISTS. The norm filename carries no version but the record filenames
+    do, so `preprocess_nuscenes.py --version v1.0-mini` (both defaults!) replaces
+    the action grid while leaving the trainval records alone. It happened, and it
+    cost two sessions: sec.1.15 inherited the mini grid and reported a 3.7889
+    regression that was not a regression. The overwrite guard added afterwards only
+    fires on files that already carry a `version`, and the file that caused the
+    accident predated the field (sec.9, session 20).
+
+    So this is the LAST line of defence, on the consumer side, where it cannot be
+    slept through: the grid is printed every run and named when it is known-wrong.
+    """
+    lo = [round(v, 4) for v in item_processor.wp_min.tolist()]
+    hi = [round(v, 4) for v in item_processor.wp_max.tolist()]
+    if (lo, hi) == (MINI_GRID[0], MINI_GRID[1]):
+        print(f"\n[grid] !! THIS IS THE v1.0-mini ACTION GRID ({norm_path}).\n"
+              f"[grid]    The incumbent checkpoint was trained on the trainval fit\n"
+              f"[grid]    min={INCUMBENT_GRID[0]} max={INCUMBENT_GRID[1]}.\n"
+              f"[grid]    Evaluating it here yields avgL2@3s ~3.7889 instead of 3.5557 and\n"
+              f"[grid]    NOTHING ELSE WILL FAIL. Point --norm_path at the trainval norm json\n"
+              f"[grid]    (data/nuscenes_records/nuscenes_norm_v1.0-trainval.json) unless you\n"
+              f"[grid]    are deliberately reproducing the mini-grid run.\n")
+        if not allow_mini:
+            raise SystemExit(
+                "refusing to run on the v1.0-mini action grid. This is not a "
+                "warning you can scroll past: the incumbent scores 3.7889 instead "
+                "of 3.5557 on it and NOTHING ELSE FAILS (sec.9). Point --norm_path "
+                "at data/nuscenes_records/nuscenes_norm_v1.0-trainval.json, or pass "
+                "--allow_mini_grid if you are deliberately reproducing an old run.")
+    elif (lo, hi) == (INCUMBENT_GRID[0], INCUMBENT_GRID[1]):
+        print(f"[grid] trainval fit -- matches the incumbent's training grid")
+    else:
+        print(f"[grid] non-standard grid min={lo} max={hi} -- neither the incumbent's "
+              f"trainval fit nor the known mini fit. Make sure this matches the checkpoint.")
 
 
 def build_planning_conv(prompt, image, state):
@@ -408,6 +471,8 @@ def main():
     )
     print(f"[eval] waypoint un-norm range: min={item_processor.wp_min.tolist()} "
           f"max={item_processor.wp_max.tolist()}")
+    check_action_grid(item_processor, args.norm_path,
+                      allow_mini=args.allow_mini_grid)
 
     model = load_model(args)
 
@@ -483,6 +548,16 @@ def main():
 
     elapsed = time.time() - t_start
     summary = {
+        # ★THE RUN'S OWN CONFIGURATION, IN ITS OWN ARTIFACT.
+        # A measurement audit found that summary.json recorded no arm settings at
+        # all -- `headline/ref` and `headline/temp_tight` were distinguishable
+        # only by directory name. That is exactly why the `--planner aggregate`
+        # bug (which silently ran the control arm) could not be detected from the
+        # artifacts, and it is the same class as §9's "the runner only overwrites
+        # the arm it runs, so an old run stays in the table". Writing argv here
+        # closes it: every number now carries the flags that produced it.
+        "args": {k: (list(v) if isinstance(v, tuple) else v)
+                 for k, v in sorted(vars(args).items())},
         "decoding": "constrained" if args.constrained else "free",
         "seed": args.seed,
         "decoder": args.decoder,

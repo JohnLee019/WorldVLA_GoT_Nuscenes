@@ -227,8 +227,21 @@ def _seg_weights(cfg: DriveGoTConfig, seg_idx: int):
 # generate_fn adapter (real model)
 # ──────────────────────────────────────────────
 
-def make_model_generate_fn(model, item_processor, prompt, args):
-    """generate_fn(image, prefix_wp, n_generate, temperature, do_sample) -> (n,2)|None."""
+def make_model_generate_fn(model, item_processor, prompt, args, state_holder=None):
+    """generate_fn(image, prefix_wp, n_generate, temperature, do_sample) -> (n,2)|None.
+
+    `state_holder` is a one-element mutable list carrying the CURRENT record's ego
+    status, or None for the stateless (incumbent) setup. It has to be a holder and
+    not a plain argument because DriveGoTPipeline fixes generate_fn's signature and
+    the fn is built once for the whole run, while state is per record: the eval loop
+    writes `state_holder[0]` before each plan() call.
+
+    ★Default None keeps every existing caller byte-identical -- `predict_segment`
+    then builds the same stateless conversation it always did. That matters: a
+    state-trained checkpoint evaluated with GoT but WITHOUT the state channel is
+    off-distribution and nothing raises, which is exactly the silent failure
+    eval_nuscenes.py refuses to run into (see its --with_state guard).
+    """
     from got_drive.segment_generation import predict_segment
 
     def generate_fn(image, prefix_wp, n_generate, temperature, do_sample):
@@ -236,6 +249,7 @@ def make_model_generate_fn(model, item_processor, prompt, args):
             model, item_processor, image, prompt, args,
             prefix_wp=prefix_wp, n_generate=n_generate,
             temperature=temperature, do_sample=do_sample,
+            state=None if state_holder is None else state_holder[0],
         )
 
     return generate_fn

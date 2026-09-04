@@ -79,7 +79,7 @@ Usage
         --tokenizer_path ../ckpts/Lumina-mGPT-7B-768 \
         --records_json  ./data/nuscenes_records/nuscenes_v1.0-trainval_val.json \
         --wm_eval_json  ./data/nuscenes_wm_records/nuscenes_wm_eval_v1.0-trainval_val.json \
-        --norm_path     ./data/nuscenes_records/nuscenes_norm.json \
+        --norm_path     ./data/nuscenes_records/nuscenes_norm_v1.0-trainval.json \
         --output_dir ./results/wm_copy --device 0 --limit 0
 
     # later, once a WM run exists: the actual gate number

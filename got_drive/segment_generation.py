@@ -57,17 +57,16 @@ def tokenize_waypoint_prefix(item_processor, prefix_wp):
     return ids
 
 
-def build_context_ids(model, item_processor, image, prompt, prefix_wp=None):
+def build_context_ids(model, item_processor, image, prompt, prefix_wp=None, state=None):
     """Image+prompt context, optionally extended with k prefix waypoint groups.
 
     With prefix_wp=None this is exactly the context from
-    `eval_nuscenes.predict_waypoints`.
+    `eval_nuscenes.predict_waypoints` -- including the ego-status placeholder,
+    which is built by the same helper so the GoT candidate pool and the greedy
+    baseline cannot drift apart in how they tokenize a record.
     """
-    conv = {
-        "conversations": [{"from": "human", "value": prompt + "<|image|>"}],
-        "image": [image],
-        "action": [],
-    }
+    from eval_nuscenes import build_planning_conv
+    conv = build_planning_conv(prompt, image, state)
     tokens = item_processor.process_item(conv, training_mode=False)
     if prefix_wp is not None and len(prefix_wp) > 0:
         tokens = tokens + tokenize_waypoint_prefix(item_processor, prefix_wp)
@@ -77,7 +76,7 @@ def build_context_ids(model, item_processor, image, prompt, prefix_wp=None):
 @torch.no_grad()
 def predict_segment(model, item_processor, image, prompt, args,
                     prefix_wp=None, n_generate=None,
-                    temperature=1.0, do_sample=False):
+                    temperature=1.0, do_sample=False, state=None):
     """Generate the next `n_generate` waypoints given `prefix_wp` already decided.
 
     Returns (n_generate, 2) metres, or None if the continuation was malformed
@@ -92,7 +91,7 @@ def predict_segment(model, item_processor, image, prompt, args,
     if n_generate <= 0:
         return np.empty((0, args.action_dim), dtype=np.float64)
 
-    input_ids = build_context_ids(model, item_processor, image, prompt, prefix_wp)
+    input_ids = build_context_ids(model, item_processor, image, prompt, prefix_wp, state)
 
     # each waypoint emits [start, x, y, end]; +8 leaves headroom for a stray token
     max_new = n_generate * (args.action_dim + 2) + 8
@@ -182,7 +181,7 @@ def trajectory_logprob(model, item_processor, image, prompt, traj, ctx=None):
     return -float(c_loss)
 
 
-def make_likelihood_score_fn(model, item_processor, prompt, args):
+def make_likelihood_score_fn(model, item_processor, prompt, args, state_holder=None):
     """lik_score_fn(image, traj) -> float, for DriveGoTPipeline's final re-rank.
 
     Signature matches the pipeline's injected-scorer convention (see
@@ -195,14 +194,23 @@ def make_likelihood_score_fn(model, item_processor, prompt, args):
     id(image) with a single-entry cache: the pipeline holds one PIL image for the
     whole plan and moves to the next record afterwards, so a one-slot cache hits
     every time within a record and never grows.
+
+    `state_holder` is the same one-element list the generator uses (see
+    got_pipeline_drive.make_model_generate_fn). The likelihood is a MODEL score,
+    so its context must be tokenized exactly like the context the candidates were
+    generated from -- scoring a state-trained checkpoint on a stateless context
+    would compare log-probs across two different conditionings. The state is part
+    of the cache key for the same reason id(image) is.
     """
     cache = {"key": None, "ctx": None}
 
     def lik_score_fn(image, traj):
-        key = id(image)
+        state = None if state_holder is None else state_holder[0]
+        key = (id(image), None if state is None else tuple(state))
         if cache["key"] != key:
             cache["key"] = key
-            cache["ctx"] = build_context_ids(model, item_processor, image, prompt)
+            cache["ctx"] = build_context_ids(model, item_processor, image, prompt,
+                                             state=state)
         return trajectory_logprob(model, item_processor, image, prompt, traj,
                                   ctx=cache["ctx"])
 
