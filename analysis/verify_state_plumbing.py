@@ -9,11 +9,18 @@ L2. These are the failures that only show up as "ego status did not help".
   [C] the LIBERO-range guard fires when the norm json is missing them
   [D] ★train and eval tokenize the same record identically
   [E] invalid (scene-start) states are zeroed, and no record was dropped
+  [F] ★the GoT path carries the channel too -- and drops it when asked not to
 
-[D] is the one worth the trouble. Training builds the conversation in
+⚠️THE CHECK COUNT CHANGED IN SESSION 21. It was 16/16; [F] adds five. Anything
+quoting "16/16 PASS" (run_state.sh's header, handoff sec.8/sec.10) predates that.
+Judge by "N/N passed", never by a remembered total.
+
+[D] and [F] are the ones worth the trouble. Training builds the conversation in
 data/dataset_nuscenes.py and eval builds it in eval_nuscenes.build_planning_conv;
 if they disagree on placeholder order, the model is trained on one layout and
-evaluated on another with nothing raising.
+evaluated on another with nothing raising. [F] extends that to the GoT path,
+which has THREE context-building call sites of its own -- and which is the arm
+this checkpoint is actually being trained for.
 
 Needs the Chameleon tokenizer assets (`../ckpts/.../tokenizer/`) because it
 tokenizes for real. GPU is optional -- pass `--device cpu` if the card is busy.
@@ -22,7 +29,7 @@ Usage
 -----
   python analysis/verify_state_plumbing.py \
       --records   ./data/nuscenes_records/nuscenes_v1.0-trainval_val.json \
-      --norm_path ./data/nuscenes_records/nuscenes_norm.json \
+      --norm_path ./data/nuscenes_records_state/nuscenes_norm.json \
       --tokenizer ../ckpts/Lumina-mGPT-7B-768
 """
 import argparse
@@ -47,7 +54,7 @@ def check(name, ok, detail=""):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--records", required=True)
-    ap.add_argument("--norm_path", default="./data/nuscenes_records/nuscenes_norm.json")
+    ap.add_argument("--norm_path", default="./data/nuscenes_records_state/nuscenes_norm.json")
     ap.add_argument("--tokenizer", default="../ckpts/Lumina-mGPT-7B-768")
     ap.add_argument("--resolution", type=int, default=256)
     ap.add_argument("--device", default="cuda")
@@ -175,6 +182,63 @@ def main():
     state_start = ip.token2id(ip.state_start_token)
     check("state tokens present in the training sequence", state_start in list(train_tokens))
     check("state tokens present in the eval sequence", state_start in list(eval_tokens))
+
+    # ------------------------------------------------------------------ F
+    #
+    # ★WHY [D] ALONE IS NOT ENOUGH. [D] compares the TRAINING path against
+    # eval_nuscenes.py -- the greedy free-run. But the arm this checkpoint exists
+    # to be evaluated on is GoT, and that path has THREE separate call sites that
+    # each build their own context: the candidate generator, the greedy baseline,
+    # and the likelihood scorer. A state-trained checkpoint evaluated through GoT
+    # without the channel is off-distribution and NOTHING RAISES -- the L2 is
+    # simply wrong. That is the failure eval_nuscenes.py's --with_state guard
+    # refuses to run into, and until session 21 the GoT path had no equivalent.
+    #
+    # Needs no model and no GPU: build_context_ids only reads `model.device`, and
+    # the wiring check replaces the generator with a recorder.
+    print("\n[F] the GoT path carries the state channel too")
+    from got_drive.segment_generation import build_context_ids
+    import got_drive.segment_generation as _sg
+    from got_drive.got_pipeline_drive import make_model_generate_fn
+
+    class _StubModel:
+        device = "cpu"
+
+    stub = _StubModel()
+    got_with = build_context_ids(stub, ip, image, DEFAULT_PROMPT,
+                                 state=records[idx]["state"])[0].tolist()
+    got_without = build_context_ids(stub, ip, image, DEFAULT_PROMPT)[0].tolist()
+    check("GoT context with a state is token-identical to the eval context",
+          got_with == list(eval_tokens),
+          f"len {len(got_with)} vs {len(eval_tokens)}")
+    check("state tokens present in the GoT context", state_start in got_with)
+    # ★The negative half. Without it this section would pass on a build that
+    # ALWAYS injects state, which is the sec.1.4 failure ("a check that cannot
+    # fail"): the incumbent's numbers depend on the stateless context being
+    # byte-identical to what produced 3.5557.
+    check("state tokens ABSENT when no state is passed (incumbent parity)",
+          state_start not in got_without)
+
+    # the wiring itself: does make_model_generate_fn actually hand the holder's
+    # state to predict_segment? A generate_fn that silently drops it is exactly
+    # how all three call sites would go stateless while the flag says otherwise.
+    seen = {}
+    _orig = _sg.predict_segment
+    try:
+        _sg.predict_segment = lambda *a, **kw: seen.update(kw) or None
+        holder = [records[idx]["state"]]
+        make_model_generate_fn(stub, ip, DEFAULT_PROMPT, args,
+                               state_holder=holder)(image, None, 2, 1.0, False)
+        got_state = seen.get("state")
+        check("make_model_generate_fn forwards the holder's state",
+              got_state is not None and list(got_state) == list(holder[0]),
+              str(got_state))
+        seen.clear()
+        make_model_generate_fn(stub, ip, DEFAULT_PROMPT, args)(image, None, 2, 1.0, False)
+        check("...and forwards None when no holder is given (incumbent parity)",
+              seen.get("state", "MISSING") is None, str(seen.get("state", "MISSING")))
+    finally:
+        _sg.predict_segment = _orig
 
     return finish()
 

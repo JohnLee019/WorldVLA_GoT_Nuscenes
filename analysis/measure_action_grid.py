@@ -69,8 +69,13 @@ START_ID = 10004                                    # token2id(action_start_toke
 BINS = np.linspace(-1.0, 1.0, N_BINS)               # 256 edges
 CENTERS = (BINS[:-1] + BINS[1:]) / 2.0              # 255 reconstruction levels
 
-# The incumbent's grid is NOT on disk. sec.1.15: data/nuscenes_records/nuscenes_norm.json
-# was overwritten with mini values, so the trainval fit lives here as a constant.
+# sec.1.15: data/nuscenes_records/nuscenes_norm.json was overwritten with mini
+# values, so the trainval fit lived here as a constant. It is now ALSO written out
+# as data/nuscenes_records/nuscenes_norm_v1.0-trainval.json (same numbers, sourced
+# from this constant / run_state.sh's gate) so that eval runs and the README can
+# point at a file instead of at prose. Keep this constant as the in-code copy: this
+# script's whole job is to compare the two grids, so it must not depend on which
+# one happens to sit at the default path.
 TRAINVAL_FIT = {
     "min": [-3.0241, -16.6451],
     "max": [69.786, 16.6451],
